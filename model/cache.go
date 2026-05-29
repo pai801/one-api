@@ -236,7 +236,6 @@ func CacheGetGroupChannels(group string) []*Channel {
 			return nil
 		}
 		seen := make(map[int]bool)
-		var channels []*Channel
 		for _, chs := range groupModels {
 			for _, ch := range chs {
 				if !seen[ch.Id] {
