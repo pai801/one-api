@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: my-one-api
+    repo: https://github.com/yj173055792/one-api
+    branch: main
+    runtime: docker
+    plan: free
+    region: singapore
+    buildCommand: ""
+    dockerfilePath: Dockerfile
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: TZ
+        value: Asia/Shanghai
+      - key: SESSION_SECRET
+        value: session-sec
+    healthCheckPath: /api/status
+    autoDeploy: true
