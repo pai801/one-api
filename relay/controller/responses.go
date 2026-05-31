@@ -77,8 +77,10 @@ func relayResponsesDirect(c *gin.Context, ctxMeta *metaPkg.Meta) *model.ErrorWit
 	} else {
 		if modelName, ok := req["model"].(string); ok {
 			ctxMeta.OriginModelName = modelName
-			if mapped, ok := getMappedModelName(modelName, ctxMeta.ModelMapping); ok {
-				ctxMeta.ActualModelName = mapped
+			if ctxMeta.ActualModelName == "" {
+				if mapped, ok := getMappedModelName(modelName, ctxMeta.ModelMapping); ok {
+					ctxMeta.ActualModelName = mapped
+				}
 			}
 		}
 		if stream, ok := req["stream"].(bool); ok {
@@ -168,12 +170,12 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 	}
 
 	modelName := ctxMeta.ActualModelName
-	if m, ok := req["model"].(string); ok {
-		modelName = m
+	if modelName == "" {
+		if m, ok := req["model"].(string); ok {
+			modelName = m
+		}
 	}
-	if mapped, ok := getMappedModelName(modelName, ctxMeta.ModelMapping); ok {
-		modelName = mapped
-	}
+	modelName, _ = getMappedModelName(modelName, ctxMeta.ModelMapping)
 
 	stream := false
 	if s, ok := req["stream"].(bool); ok {
