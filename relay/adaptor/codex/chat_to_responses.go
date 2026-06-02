@@ -48,10 +48,11 @@ type chatToResponsesState struct {
 	HasClaudeCacheFields  bool
 	HasCacheDetails       bool
 	// 首次消息标记
-	FirstChunk           bool
-	CodexToolCompatEnabled bool
-	CodexCtx            CodexToolContext
-	CodexCtxInitialized bool
+	FirstChunk                 bool
+	CodexToolCompatEnabled     bool
+	CodexCtx                   CodexToolContext
+	CodexCtxInitialized        bool
+	FallbackReasoningToMessage bool // 兜底：无 content 仅 reasoning 时，将 reasoning 文本复制为 message
 }
 
 // isCustomProxy 返回给定索引的工具调用是否为 Codex 自定义工具代理
@@ -178,7 +179,7 @@ func (st *chatToResponsesState) ensureCodexToolContext(originalRequestRawJSON []
 // requestRawJSON: 转换后的 Chat Completions 请求 JSON
 // rawJSON: OpenAI Chat Completions SSE 行
 // param: 状态指针（*any，在多次调用间保持状态）
-func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any) []string {
+func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any, fallbackReasoningToMessage bool) []string {
 	var st *chatToResponsesState
 	if param == nil {
 		st = &chatToResponsesState{
@@ -211,6 +212,8 @@ func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSO
 			*param = st
 		}
 	}
+
+	st.FallbackReasoningToMessage = fallbackReasoningToMessage
 
 	// 期望 `data: {..}` 格式
 	if !bytes.HasPrefix(rawJSON, chatDataTag) {
@@ -758,6 +761,63 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 		out = append(out, st.closeFuncBlocks(nextSeq)...)
 	}
 
+	// 兜底：整轮流无 content delta，仅 reasoning，则将 reasoning 文本复制为 message 渲染
+	if st.FallbackReasoningToMessage &&
+		st.TextBuf.Len() == 0 &&
+		st.CurrentMsgID == "" &&
+		st.ReasoningBuf.Len() > 0 {
+
+		full := st.ReasoningBuf.String()
+		outputIndex := 1 // reasoning 占 0，兜底 message 占 1
+		msgID := fmt.Sprintf("msg_%s_1", st.ResponseID)
+
+		// 1. response.output_item.added
+		item := `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"message","status":"in_progress","content":[],"role":"assistant"}}`
+		item, _ = sjson.Set(item, "sequence_number", nextSeq())
+		item, _ = sjson.Set(item, "output_index", outputIndex)
+		item, _ = sjson.Set(item, "item.id", msgID)
+		out = append(out, emitResponsesEvent("response.output_item.added", item))
+
+		// 2. response.content_part.added
+		part := `{"type":"response.content_part.added","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""}}`
+		part, _ = sjson.Set(part, "sequence_number", nextSeq())
+		part, _ = sjson.Set(part, "item_id", msgID)
+		part, _ = sjson.Set(part, "output_index", outputIndex)
+		out = append(out, emitResponsesEvent("response.content_part.added", part))
+
+		// 3. response.output_text.delta
+		delta := `{"type":"response.output_text.delta","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"delta":"","logprobs":[]}`
+		delta, _ = sjson.Set(delta, "sequence_number", nextSeq())
+		delta, _ = sjson.Set(delta, "item_id", msgID)
+		delta, _ = sjson.Set(delta, "output_index", outputIndex)
+		delta, _ = sjson.Set(delta, "delta", full)
+		out = append(out, emitResponsesEvent("response.output_text.delta", delta))
+
+		// 4. response.output_text.done
+		done := `{"type":"response.output_text.done","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"text":"","logprobs":[]}`
+		done, _ = sjson.Set(done, "sequence_number", nextSeq())
+		done, _ = sjson.Set(done, "item_id", msgID)
+		done, _ = sjson.Set(done, "output_index", outputIndex)
+		done, _ = sjson.Set(done, "text", full)
+		out = append(out, emitResponsesEvent("response.output_text.done", done))
+
+		// 5. response.content_part.done
+		partDone := `{"type":"response.content_part.done","sequence_number":0,"item_id":"","output_index":0,"content_index":0,"part":{"type":"output_text","annotations":[],"logprobs":[],"text":""}}`
+		partDone, _ = sjson.Set(partDone, "sequence_number", nextSeq())
+		partDone, _ = sjson.Set(partDone, "item_id", msgID)
+		partDone, _ = sjson.Set(partDone, "output_index", outputIndex)
+		partDone, _ = sjson.Set(partDone, "part.text", full)
+		out = append(out, emitResponsesEvent("response.content_part.done", partDone))
+
+		// 6. response.output_item.done
+		itemDone := `{"type":"response.output_item.done","sequence_number":0,"output_index":0,"item":{"id":"","type":"message","status":"completed","content":[{"type":"output_text","annotations":[],"logprobs":[],"text":""}],"role":"assistant"}}`
+		itemDone, _ = sjson.Set(itemDone, "sequence_number", nextSeq())
+		itemDone, _ = sjson.Set(itemDone, "output_index", outputIndex)
+		itemDone, _ = sjson.Set(itemDone, "item.id", msgID)
+		itemDone, _ = sjson.Set(itemDone, "item.content.0.text", full)
+		out = append(out, emitResponsesEvent("response.output_item.done", itemDone))
+	}
+
 	// 构建 response.completed
 	completed := `{"type":"response.completed","sequence_number":0,"response":{"id":"","object":"response","created_at":0,"status":"completed","background":false,"error":null}}`
 	completed, _ = sjson.Set(completed, "sequence_number", nextSeq())
@@ -830,6 +890,26 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 				"annotations": []interface{}{},
 				"logprobs":    []interface{}{},
 				"text":        st.TextBuf.String(),
+			}},
+			"role": "assistant",
+		}
+		outputs = append(outputs, m)
+	}
+
+	// 兜底 message item（无 content 仅 reasoning 时，把 reasoning 文本复制为 message 渲染）
+	if st.FallbackReasoningToMessage &&
+		st.TextBuf.Len() == 0 &&
+		st.CurrentMsgID == "" &&
+		st.ReasoningBuf.Len() > 0 {
+		m := map[string]interface{}{
+			"id":     fmt.Sprintf("msg_%s_1", st.ResponseID),
+			"type":   "message",
+			"status": "completed",
+			"content": []interface{}{map[string]interface{}{
+				"type":        "output_text",
+				"annotations": []interface{}{},
+				"logprobs":    []interface{}{},
+				"text":        st.ReasoningBuf.String(),
 			}},
 			"role": "assistant",
 		}

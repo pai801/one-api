@@ -10,6 +10,8 @@ import (
 	"math"
 	"net/http"
 
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common"
 	"github.com/songquanpeng/one-api/common/config"
@@ -183,6 +185,12 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 	}
 	ctxMeta.IsStream = stream
 
+	// 决定是否对仅 reasoning 无 content 的响应兜底生成 message 事件
+	fallbackReasoning := false
+	if strings.Contains(strings.ToLower(modelName), "deepseek") {
+		fallbackReasoning = true
+	}
+
 	chatRequest := codex.ConvertResponsesToChatRequest(modelName, requestBody, stream)
 	chatRequestReader := bytes.NewBuffer(chatRequest)
 
@@ -256,7 +264,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 			if len(line) == 0 {
 				continue
 			}
-			events := codex.ConvertOpenAIChatToResponses(requestBody, nil, line, &converterState)
+			events := codex.ConvertOpenAIChatToResponses(requestBody, nil, line, &converterState, fallbackReasoning)
 			for _, event := range events {
 				_, _ = c.Writer.WriteString(event)
 			}
@@ -297,7 +305,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 			ctx = context.WithValue(ctx, CtxKeyResponseBody, string(respBody))
 		}
 
-		responsesResponse := codex.ConvertChatResponseToResponses(respBody, modelName)
+		responsesResponse := codex.ConvertChatResponseToResponses(respBody, modelName, fallbackReasoning)
 		c.JSON(http.StatusOK, json.RawMessage(responsesResponse))
 
 		// 解析 usage

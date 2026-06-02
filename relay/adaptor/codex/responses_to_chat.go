@@ -339,7 +339,7 @@ func convertToolsToOpenAI(tools []interface{}) []interface{} {
 	return result
 }
 
-func ConvertChatResponseToResponses(chatResponseBody []byte, model string) []byte {
+func ConvertChatResponseToResponses(chatResponseBody []byte, model string, fallbackReasoningToMessage bool) []byte {
 	var chatResp map[string]interface{}
 	if err := json.Unmarshal(chatResponseBody, &chatResp); err != nil {
 		return chatResponseBody
@@ -371,6 +371,35 @@ func ConvertChatResponseToResponses(chatResponseBody []byte, model string) []byt
 						responsesResp["output"] = append(outputs, output...)
 					}
 				}
+			}
+		}
+	}
+
+	// 兜底：output 中无 message item，但有 reasoning 时，复制第一个 reasoning 的 summary 文本为 message
+	if fallbackReasoningToMessage {
+		if outputs, ok := responsesResp["output"].([]interface{}); ok {
+			hasMessage := false
+			var firstReasoningText string
+			for _, o := range outputs {
+				if om, ok := o.(map[string]interface{}); ok {
+					if t, _ := om["type"].(string); t == "message" {
+						hasMessage = true
+						break
+					} else if t == "reasoning" && firstReasoningText == "" {
+						if summary, ok := om["summary"].([]interface{}); ok && len(summary) > 0 {
+							if s, ok := summary[0].(map[string]interface{}); ok {
+								firstReasoningText, _ = s["text"].(string)
+							}
+						}
+					}
+				}
+			}
+			if !hasMessage && firstReasoningText != "" {
+				responsesResp["output"] = append(outputs, map[string]interface{}{
+					"type":    "message",
+					"role":    "assistant",
+					"content": []interface{}{map[string]interface{}{"type": "output_text", "text": firstReasoningText}},
+				})
 			}
 		}
 	}
