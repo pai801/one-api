@@ -12,18 +12,19 @@ import (
 
 // chatToResponsesState 流式转换状态
 type chatToResponsesState struct {
-	Seq           int
-	ResponseID    string
-	CreatedAt     int64
-	CurrentMsgID  string
-	CurrentFCID   string
-	InTextBlock   bool
-	InFuncBlock   bool
-	FuncArgsBuf   map[int]*strings.Builder // index -> args
-	FuncNames     map[int]string           // index -> function name
-	FuncCallIDs   map[int]string           // index -> call id
-	FuncItemAdded map[int]bool             // index -> whether output_item.added has been emitted
-	TextBuf       strings.Builder
+	Seq            int
+	ResponseID     string
+	CreatedAt      int64
+	CurrentMsgID   string
+	CurrentFCID    string
+	InTextBlock    bool
+	InFuncBlock    bool
+	FuncArgsBuf    map[int]*strings.Builder // index -> args
+	FuncNames      map[int]string           // index -> function name
+	FuncCallIDs    map[int]string           // index -> call id
+	FuncItemAdded  map[int]bool             // index -> whether output_item.added has been emitted
+	TextBuf        strings.Builder
+	PendingTextBuf strings.Builder // 延迟首段纯空白 content，避免 reasoning fallback 场景 streaming/completed 不一致
 	// reasoning state
 	ReasoningActive    bool
 	ReasoningItemID    string
@@ -69,10 +70,100 @@ func (st *chatToResponsesState) customToolOutputIndex(idx int) int {
 	if st.ReasoningPartAdded {
 		outputIndex++
 	}
-	if st.CurrentMsgID != "" {
+	if st.CurrentMsgID != "" || st.shouldFallbackReasoning() {
 		outputIndex++
 	}
 	return outputIndex
+}
+
+func (st *chatToResponsesState) builtinToolKind(idx int) string {
+	name := st.FuncNames[idx]
+	if name == "" || !st.CodexCtxInitialized {
+		return ""
+	}
+	if st.CodexCtx.IsBuiltinTool(name, "tool_search") {
+		return "tool_search"
+	}
+	if st.CodexCtx.IsBuiltinTool(name, "web_search") {
+		return "web_search"
+	}
+	return ""
+}
+
+func (st *chatToResponsesState) builtinToolItemID(idx int) string {
+	callID := st.FuncCallIDs[idx]
+	switch st.builtinToolKind(idx) {
+	case "tool_search":
+		return fmt.Sprintf("tsc_%s", callID)
+	case "web_search":
+		return fmt.Sprintf("wsc_%s", callID)
+	default:
+		return ""
+	}
+}
+
+func builtinToolArgumentsValue(args string) interface{} {
+	trimmed := strings.TrimSpace(args)
+	if trimmed == "" {
+		return map[string]interface{}{}
+	}
+	parsed := gjson.Parse(trimmed)
+	if (parsed.IsObject() || parsed.IsArray()) && gjson.Valid(trimmed) {
+		return parsed.Value()
+	}
+	return args
+}
+
+func (st *chatToResponsesState) emitBuiltinLifecycleEvent(idx int, nextSeq func() int, suffix string) string {
+	kind := st.builtinToolKind(idx)
+	if kind == "" {
+		return ""
+	}
+	msg := `{"type":"","sequence_number":0,"item_id":"","output_index":0}`
+	msg, _ = sjson.Set(msg, "type", fmt.Sprintf("response.%s_call.%s", kind, suffix))
+	msg, _ = sjson.Set(msg, "sequence_number", nextSeq())
+	msg, _ = sjson.Set(msg, "item_id", st.builtinToolItemID(idx))
+	msg, _ = sjson.Set(msg, "output_index", st.customToolOutputIndex(idx))
+	return emitResponsesEvent(fmt.Sprintf("response.%s_call.%s", kind, suffix), msg)
+}
+
+func (st *chatToResponsesState) emitBuiltinSearchQueryDelta(idx int, delta string, nextSeq func() int) string {
+	kind := st.builtinToolKind(idx)
+	if kind == "" {
+		return ""
+	}
+	msg := `{"type":"","sequence_number":0,"item_id":"","output_index":0,"delta":""}`
+	msg, _ = sjson.Set(msg, "type", fmt.Sprintf("response.%s_call.search_query.delta", kind))
+	msg, _ = sjson.Set(msg, "sequence_number", nextSeq())
+	msg, _ = sjson.Set(msg, "item_id", st.builtinToolItemID(idx))
+	msg, _ = sjson.Set(msg, "output_index", st.customToolOutputIndex(idx))
+	msg, _ = sjson.Set(msg, "delta", delta)
+	return emitResponsesEvent(fmt.Sprintf("response.%s_call.search_query.delta", kind), msg)
+}
+
+func (st *chatToResponsesState) emitBuiltinSearchQueryDone(idx int, query string, nextSeq func() int) string {
+	kind := st.builtinToolKind(idx)
+	if kind == "" {
+		return ""
+	}
+	queryValue := query
+	if parsed := gjson.Parse(query); parsed.IsObject() {
+		if v := parsed.Get("query"); v.Exists() && v.Type != gjson.Null {
+			queryValue = v.String()
+		}
+	}
+	msg := `{"type":"","sequence_number":0,"item_id":"","output_index":0,"query":""}`
+	msg, _ = sjson.Set(msg, "type", fmt.Sprintf("response.%s_call.search_query.done", kind))
+	msg, _ = sjson.Set(msg, "sequence_number", nextSeq())
+	msg, _ = sjson.Set(msg, "item_id", st.builtinToolItemID(idx))
+	msg, _ = sjson.Set(msg, "output_index", st.customToolOutputIndex(idx))
+	msg, _ = sjson.Set(msg, "query", queryValue)
+	return emitResponsesEvent(fmt.Sprintf("response.%s_call.search_query.done", kind), msg)
+}
+
+func (st *chatToResponsesState) shouldFallbackReasoning() bool {
+	text := st.TextBuf.String() + st.PendingTextBuf.String()
+	return st.FallbackReasoningToMessage && strings.TrimSpace(text) == "" && st.ReasoningBuf.Len() > 0
 }
 
 func (st *chatToResponsesState) addToolCallItemIfNeeded(idx int, nextSeq func() int) []string {
@@ -91,10 +182,25 @@ func (st *chatToResponsesState) addToolCallItemIfNeeded(idx int, nextSeq func() 
 		item = `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"custom_tool_call","status":"in_progress","call_id":"","name":"","input":""}}`
 		item, _ = sjson.Set(item, "item.id", itemID)
 		item, _ = sjson.Set(item, "item.name", originalName)
+	} else if st.CodexCtxInitialized && st.CodexCtx.IsBuiltinTool(name, "tool_search") {
+		itemID := fmt.Sprintf("tsc_%s", callID)
+		item = `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"tool_search_call","status":"in_progress","arguments":{},"call_id":"","name":"tool_search","execution":"client"}}`
+		item, _ = sjson.Set(item, "item.id", itemID)
+		item, _ = sjson.Set(item, "item.name", name)
+		item, _ = sjson.Set(item, "item.call_id", callID)
+	} else if st.CodexCtxInitialized && st.CodexCtx.IsBuiltinTool(name, "web_search") {
+		itemID := fmt.Sprintf("wsc_%s", callID)
+		item = `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"web_search_call","status":"in_progress","arguments":{},"call_id":"","name":"web_search","execution":"client"}}`
+		item, _ = sjson.Set(item, "item.id", itemID)
+		item, _ = sjson.Set(item, "item.name", name)
+		item, _ = sjson.Set(item, "item.call_id", callID)
 	} else {
 		itemID := fmt.Sprintf("fc_%s", callID)
 		item = `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"function_call","status":"in_progress","arguments":"","call_id":"","name":""}}`
 		item, _ = sjson.Set(item, "item.id", itemID)
+		if buf := st.FuncArgsBuf[idx]; buf != nil && buf.Len() > 0 {
+			item, _ = sjson.Set(item, "item.arguments", buf.String())
+		}
 		displayName, namespace := st.CodexCtx.OpenAINameForFunctionTool(name)
 		item, _ = sjson.Set(item, "item.name", displayName)
 		if namespace != "" {
@@ -105,7 +211,12 @@ func (st *chatToResponsesState) addToolCallItemIfNeeded(idx int, nextSeq func() 
 	item, _ = sjson.Set(item, "output_index", outputIndex)
 	item, _ = sjson.Set(item, "item.call_id", callID)
 	st.FuncItemAdded[idx] = true
-	return []string{emitResponsesEvent("response.output_item.added", item)}
+	out := []string{emitResponsesEvent("response.output_item.added", item)}
+	if st.builtinToolKind(idx) != "" {
+		out = append(out, st.emitBuiltinLifecycleEvent(idx, nextSeq, "in_progress"))
+		out = append(out, st.emitBuiltinLifecycleEvent(idx, nextSeq, "searching"))
+	}
+	return out
 }
 
 var chatDataTag = []byte("data:")
@@ -174,12 +285,28 @@ func (st *chatToResponsesState) ensureCodexToolContext(originalRequestRawJSON []
 	st.CodexCtxInitialized = true
 }
 
-// ConvertOpenAIChatToResponses 将 OpenAI Chat Completions SSE 转换为 Responses SSE 事件
+// ConvertOpenAIChatToResponses 将 OpenAI Chat Completions SSE 转换为 Responses SSE 事件。
+// 旧 5 参数入口，作为 thin wrapper 调用 ConvertOpenAIChatToResponsesWithContext 并传 nil 作为
+// originalRequestRawJSON，保持对历史调用方的 100% 行为兼容。
 // originalRequestRawJSON: 原始的 Responses API 请求 JSON（用于回显字段）
 // requestRawJSON: 转换后的 Chat Completions 请求 JSON
 // rawJSON: OpenAI Chat Completions SSE 行
 // param: 状态指针（*any，在多次调用间保持状态）
 func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any, fallbackReasoningToMessage bool) []string {
+	return ConvertOpenAIChatToResponsesWithContext(originalRequestRawJSON, requestRawJSON, rawJSON, param, fallbackReasoningToMessage)
+}
+
+// ConvertOpenAIChatToResponsesWithContext 将 OpenAI Chat Completions SSE 转换为 Responses SSE 事件。
+// 当 originalRequestRawJSON 非 nil 时，从原始 Responses 请求里解析 CodexToolContext，
+// 用于在 tool_calls 流式 output_item.added 事件中携带正确的 name/namespace/custom_tool_call 类型。
+// 当 originalRequestRawJSON 为 nil 时，退化到无 CodexCtx 行为（name 保留原上游名，无 namespace 字段）。
+// #5 修复：流式 output_item.added 事件必须在 first chunk 时就带 name/namespace/input，与 #4 非流式对称。
+// originalRequestRawJSON: 原始的 Responses API 请求 JSON
+// requestRawJSON: 转换后的 Chat Completions 请求 JSON
+// rawJSON: OpenAI Chat Completions SSE 行
+// param: 状态指针（*any，在多次调用间保持状态）
+// fallbackReasoningToMessage: 兜底无 content 仅 reasoning 时复制文本为 message
+func ConvertOpenAIChatToResponsesWithContext(originalRequestRawJSON, requestRawJSON, rawJSON []byte, param *any, fallbackReasoningToMessage bool) []string {
 	var st *chatToResponsesState
 	if param == nil {
 		st = &chatToResponsesState{
@@ -318,6 +445,10 @@ func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSO
 
 		// 处理 tool_calls
 		if toolCalls := delta.Get("tool_calls"); toolCalls.Exists() && toolCalls.IsArray() {
+			out = append(out, st.flushThinkTagBuf(nextSeq)...)
+			if st.PendingTextBuf.Len() > 0 && !st.shouldFallbackReasoning() {
+				out = append(out, st.flushPendingWhitespace(nextSeq)...)
+			}
 			for _, tc := range toolCalls.Array() {
 				idx := int(tc.Get("index").Int())
 
@@ -341,22 +472,13 @@ func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSO
 					st.FuncCallIDs[idx] = tcID.String()
 					st.CurrentFCID = tcID.String()
 
-					// 开始新的 tool call item. The concrete item type is emitted
-					// after the function name is known.
+					// 开始新的 tool call item。
+					// #5 修复：output_item.added 事件延迟到 function.name 到达时由
+					// addToolCallItemIfNeeded 统一发射，确保 item.name / item.namespace /
+					// custom_tool_call 类型在事件发出时已就位，与 #4 非流式对称。
+					// 原 350 路径在收到 id 时立即发 name="" 的 output_item.added，会让
+					// codex 客户端在收到事件时缺 name 而报错或挂起。
 					st.InFuncBlock = true
-
-					// When codexToolCompat is disabled, emit function_call output_item.added
-					// immediately upon receiving tool_call.id, preserving the original event timing.
-					if !st.CodexToolCompatEnabled {
-						outputIndex := st.customToolOutputIndex(idx)
-						item := `{"type":"response.output_item.added","sequence_number":0,"output_index":0,"item":{"id":"","type":"function_call","status":"in_progress","arguments":"","call_id":"","name":""}}`
-						item, _ = sjson.Set(item, "sequence_number", nextSeq())
-						item, _ = sjson.Set(item, "output_index", outputIndex)
-						item, _ = sjson.Set(item, "item.id", fmt.Sprintf("fc_%s", tcID.String()))
-						item, _ = sjson.Set(item, "item.call_id", tcID.String())
-						st.FuncItemAdded[idx] = true
-						out = append(out, emitResponsesEvent("response.output_item.added", item))
-					}
 				}
 
 				// 处理 function
@@ -365,7 +487,6 @@ func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSO
 					if name := function.Get("name"); name.Exists() && name.String() != "" {
 						st.FuncNames[idx] = name.String()
 					}
-					out = append(out, st.addToolCallItemIfNeeded(idx, nextSeq)...)
 
 					// 处理参数
 					if args := function.Get("arguments"); args.Exists() && args.String() != "" {
@@ -373,6 +494,10 @@ func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSO
 						out = append(out, st.addToolCallItemIfNeeded(idx, nextSeq)...)
 
 						if st.isCustomProxy(idx) {
+							continue
+						}
+						if st.builtinToolKind(idx) != "" {
+							out = append(out, st.emitBuiltinSearchQueryDelta(idx, args.String(), nextSeq))
 							continue
 						}
 
@@ -385,6 +510,8 @@ func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSO
 						msg, _ = sjson.Set(msg, "output_index", outputIndex)
 						msg, _ = sjson.Set(msg, "delta", args.String())
 						out = append(out, emitResponsesEvent("response.function_call_arguments.delta", msg))
+					} else {
+						out = append(out, st.addToolCallItemIfNeeded(idx, nextSeq)...)
 					}
 				}
 			}
@@ -394,6 +521,9 @@ func ConvertOpenAIChatToResponses(originalRequestRawJSON, requestRawJSON, rawJSO
 		if finishReason != "" && finishReason != "null" {
 			// 先把 think 状态机剩余 buffer 兜底刷出
 			out = append(out, st.flushThinkTagBuf(nextSeq)...)
+			if st.PendingTextBuf.Len() > 0 && !st.shouldFallbackReasoning() {
+				out = append(out, st.flushPendingWhitespace(nextSeq)...)
+			}
 			// 关闭所有打开的 blocks
 			if st.ReasoningActive {
 				out = append(out, st.closeReasoningBlock(nextSeq)...)
@@ -516,8 +646,16 @@ func (st *chatToResponsesState) handleReasoningPart(reasoningText string, nextSe
 	return out
 }
 
-// handleContentPart 发射 text 块相关事件，并维护 InTextBlock/TextBuf 等状态
-func (st *chatToResponsesState) handleContentPart(contentText string, nextSeq func() int) []string {
+func (st *chatToResponsesState) shouldDelayLeadingWhitespace(contentText string) bool {
+	return !st.InTextBlock &&
+		st.TextBuf.Len() == 0 &&
+		st.CurrentMsgID == "" &&
+		strings.TrimSpace(contentText) == "" &&
+		st.FallbackReasoningToMessage &&
+		(st.ReasoningPartAdded || st.ReasoningActive || st.ReasoningBuf.Len() > 0)
+}
+
+func (st *chatToResponsesState) emitContentPart(contentText string, nextSeq func() int) []string {
 	if contentText == "" {
 		return nil
 	}
@@ -565,6 +703,30 @@ func (st *chatToResponsesState) handleContentPart(contentText string, nextSeq fu
 	msg, _ = sjson.Set(msg, "output_index", outputIndex)
 	msg, _ = sjson.Set(msg, "delta", contentText)
 	out = append(out, emitResponsesEvent("response.output_text.delta", msg))
+	return out
+}
+
+func (st *chatToResponsesState) flushPendingWhitespace(nextSeq func() int) []string {
+	if st.PendingTextBuf.Len() == 0 {
+		return nil
+	}
+	pending := st.PendingTextBuf.String()
+	st.PendingTextBuf.Reset()
+	return st.emitContentPart(pending, nextSeq)
+}
+
+// handleContentPart 发射 text 块相关事件，并维护 InTextBlock/TextBuf 等状态
+func (st *chatToResponsesState) handleContentPart(contentText string, nextSeq func() int) []string {
+	if contentText == "" {
+		return nil
+	}
+	if st.shouldDelayLeadingWhitespace(contentText) {
+		st.PendingTextBuf.WriteString(contentText)
+		return nil
+	}
+	var out []string
+	out = append(out, st.flushPendingWhitespace(nextSeq)...)
+	out = append(out, st.emitContentPart(contentText, nextSeq)...)
 	return out
 }
 
@@ -713,6 +875,30 @@ func (st *chatToResponsesState) closeFuncBlocks(nextSeq func() int) []string {
 			itemDone, _ = sjson.Set(itemDone, "item.input", customInput)
 			out = append(out, emitResponsesEvent("response.output_item.done", itemDone))
 			continue
+		} else if st.CodexCtxInitialized && st.CodexCtx.IsBuiltinTool(name, "tool_search") {
+			out = append(out, st.emitBuiltinSearchQueryDone(idx, args, nextSeq))
+			out = append(out, st.emitBuiltinLifecycleEvent(idx, nextSeq, "completed"))
+			itemDone := `{"type":"response.output_item.done","sequence_number":0,"output_index":0,"item":{"id":"","type":"tool_search_call","status":"completed","arguments":{},"call_id":"","name":"tool_search","execution":"client"}}`
+			itemDone, _ = sjson.Set(itemDone, "sequence_number", nextSeq())
+			itemDone, _ = sjson.Set(itemDone, "output_index", outputIndex)
+			itemDone, _ = sjson.Set(itemDone, "item.id", fmt.Sprintf("tsc_%s", callID))
+			itemDone, _ = sjson.Set(itemDone, "item.name", name)
+			itemDone, _ = sjson.Set(itemDone, "item.call_id", callID)
+			itemDone, _ = sjson.Set(itemDone, "item.arguments", builtinToolArgumentsValue(args))
+			out = append(out, emitResponsesEvent("response.output_item.done", itemDone))
+			continue
+		} else if st.CodexCtxInitialized && st.CodexCtx.IsBuiltinTool(name, "web_search") {
+			out = append(out, st.emitBuiltinSearchQueryDone(idx, args, nextSeq))
+			out = append(out, st.emitBuiltinLifecycleEvent(idx, nextSeq, "completed"))
+			itemDone := `{"type":"response.output_item.done","sequence_number":0,"output_index":0,"item":{"id":"","type":"web_search_call","status":"completed","arguments":{},"call_id":"","name":"web_search","execution":"client"}}`
+			itemDone, _ = sjson.Set(itemDone, "sequence_number", nextSeq())
+			itemDone, _ = sjson.Set(itemDone, "output_index", outputIndex)
+			itemDone, _ = sjson.Set(itemDone, "item.id", fmt.Sprintf("wsc_%s", callID))
+			itemDone, _ = sjson.Set(itemDone, "item.name", name)
+			itemDone, _ = sjson.Set(itemDone, "item.call_id", callID)
+			itemDone, _ = sjson.Set(itemDone, "item.arguments", builtinToolArgumentsValue(args))
+			out = append(out, emitResponsesEvent("response.output_item.done", itemDone))
+			continue
 		}
 
 		// response.function_call_arguments.done
@@ -749,6 +935,9 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 
 	// 兜底：刷出 think 状态机的尾部缓冲（如未闭合的 <think> 或 "<thi" 之类边界片段）
 	out = append(out, st.flushThinkTagBuf(nextSeq)...)
+	if st.PendingTextBuf.Len() > 0 && !st.shouldFallbackReasoning() {
+		out = append(out, st.flushPendingWhitespace(nextSeq)...)
+	}
 
 	// 先关闭所有打开的 blocks
 	if st.ReasoningActive {
@@ -761,11 +950,11 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 		out = append(out, st.closeFuncBlocks(nextSeq)...)
 	}
 
-	// 兜底：整轮流无 content delta，仅 reasoning，则将 reasoning 文本复制为 message 渲染
-	if st.FallbackReasoningToMessage &&
-		st.TextBuf.Len() == 0 &&
-		st.CurrentMsgID == "" &&
-		st.ReasoningBuf.Len() > 0 {
+	// 兜底：整轮流无有效 content，仅 reasoning，则将 reasoning 文本复制为 message 渲染。
+	// 流式阶段仍完整保留纯空白 content；仅在 completed output 阶段避免空白 message 污染 fallback 场景。
+	hasTextBlock := st.TextBuf.Len() > 0 || st.CurrentMsgID != ""
+	shouldFallbackReasoning := st.shouldFallbackReasoning()
+	if shouldFallbackReasoning {
 
 		full := st.ReasoningBuf.String()
 		outputIndex := 1 // reasoning 占 0，兜底 message 占 1
@@ -879,8 +1068,8 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 		outputs = append(outputs, r)
 	}
 
-	// message item（如果有文本）
-	if st.TextBuf.Len() > 0 || st.CurrentMsgID != "" {
+	// message item（如果有文本块）。触发 reasoning fallback 时不额外输出纯空白 message。
+	if hasTextBlock && !shouldFallbackReasoning {
 		m := map[string]interface{}{
 			"id":     st.CurrentMsgID,
 			"type":   "message",
@@ -897,10 +1086,7 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 	}
 
 	// 兜底 message item（无 content 仅 reasoning 时，把 reasoning 文本复制为 message 渲染）
-	if st.FallbackReasoningToMessage &&
-		st.TextBuf.Len() == 0 &&
-		st.CurrentMsgID == "" &&
-		st.ReasoningBuf.Len() > 0 {
+	if shouldFallbackReasoning {
 		m := map[string]interface{}{
 			"id":     fmt.Sprintf("msg_%s_1", st.ResponseID),
 			"type":   "message",
@@ -949,6 +1135,32 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 					"call_id": callID,
 					"name":    originalName,
 					"input":   customInput,
+				}
+				outputs = append(outputs, item)
+				continue
+			}
+			if st.CodexCtxInitialized && st.CodexCtx.IsBuiltinTool(name, "tool_search") {
+				item := map[string]interface{}{
+					"id":        fmt.Sprintf("tsc_%s", callID),
+					"type":      "tool_search_call",
+					"status":    "completed",
+					"arguments": builtinToolArgumentsValue(args),
+					"call_id":   callID,
+					"name":      name,
+					"execution": "client",
+				}
+				outputs = append(outputs, item)
+				continue
+			}
+			if st.CodexCtxInitialized && st.CodexCtx.IsBuiltinTool(name, "web_search") {
+				item := map[string]interface{}{
+					"id":        fmt.Sprintf("wsc_%s", callID),
+					"type":      "web_search_call",
+					"status":    "completed",
+					"arguments": builtinToolArgumentsValue(args),
+					"call_id":   callID,
+					"name":      name,
+					"execution": "client",
 				}
 				outputs = append(outputs, item)
 				continue

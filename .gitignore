@@ -25,3 +25,6 @@ migrate_models_alias
 requirement-2025-05-28.md
 docs/contracts/
 docs/superpowers/
+docs/diagnosis/
+request*.txt
+response*.txt

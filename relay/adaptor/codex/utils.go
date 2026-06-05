@@ -356,6 +356,7 @@ type CodexFunctionToolSpec struct {
 type CodexToolContext struct {
 	CustomTools       map[string]CodexCustomToolSpec
 	FunctionTools     map[string]CodexFunctionToolSpec
+	BuiltinTools      map[string]string
 	HasCustomTools    bool
 	HasNamespaceTools bool
 }
@@ -366,24 +367,52 @@ func buildCodexToolContextFromRequest(requestRawJSON []byte) CodexToolContext {
 		return CodexToolContext{
 			CustomTools:   make(map[string]CodexCustomToolSpec),
 			FunctionTools: make(map[string]CodexFunctionToolSpec),
+			BuiltinTools:  make(map[string]string),
 		}
 	}
 
 	req := gjson.ParseBytes(requestRawJSON)
-	tools := req.Get("tools")
-	if !tools.Exists() || !tools.IsArray() {
+	rawTools := collectContextToolsFromRequest(req)
+	if len(rawTools) == 0 {
 		return CodexToolContext{
 			CustomTools:   make(map[string]CodexCustomToolSpec),
 			FunctionTools: make(map[string]CodexFunctionToolSpec),
+			BuiltinTools:  make(map[string]string),
 		}
 	}
 
+	return BuildCodexToolContextFromRaw(rawTools)
+}
+
+func collectContextToolsFromRequest(req gjson.Result) []interface{} {
 	var rawTools []interface{}
-	for _, t := range tools.Array() {
-		rawTools = append(rawTools, t.Value())
+
+	if tools := req.Get("tools"); tools.Exists() && tools.IsArray() {
+		for _, t := range tools.Array() {
+			rawTools = append(rawTools, t.Value())
+		}
 	}
 
-	return BuildCodexToolContextFromRaw(rawTools)
+	input := req.Get("input")
+	if !input.Exists() || !input.IsArray() {
+		return rawTools
+	}
+
+	for _, item := range input.Array() {
+		itemType := item.Get("type").String()
+		switch itemType {
+		case "tool_search_output", "tool_search_call_output", "web_search_output", "web_search_call_output":
+			tools := item.Get("tools")
+			if !tools.Exists() || !tools.IsArray() {
+				continue
+			}
+			for _, discovered := range tools.Array() {
+				rawTools = append(rawTools, discovered.Value())
+			}
+		}
+	}
+
+	return rawTools
 }
 
 // BuildCodexToolContextFromRaw builds Codex tool context from raw tools slice.
@@ -391,16 +420,22 @@ func BuildCodexToolContextFromRaw(tools []interface{}) CodexToolContext {
 	ctx := CodexToolContext{
 		CustomTools:   make(map[string]CodexCustomToolSpec),
 		FunctionTools: make(map[string]CodexFunctionToolSpec),
+		BuiltinTools:  make(map[string]string),
 	}
 
 	for _, rawTool := range tools {
 		if name, ok := rawTool.(string); ok && name != "" {
-			if action := proxyActionFromUpstreamName(name); strings.HasPrefix(name, "apply_patch_") && action != "" {
-				ctx.CustomTools[name] = CodexCustomToolSpec{OpenAIName: "apply_patch", Kind: CodexCustomToolApplyPatch, ProxyAction: action}
-			} else {
-				ctx.CustomTools[name] = CodexCustomToolSpec{OpenAIName: name, Kind: CodexCustomToolRaw}
+			switch name {
+			case "tool_search", "web_search", "local_shell", "computer_use":
+				ctx.BuiltinTools[name] = name
+			default:
+				if action := proxyActionFromUpstreamName(name); strings.HasPrefix(name, "apply_patch_") && action != "" {
+					ctx.CustomTools[name] = CodexCustomToolSpec{OpenAIName: "apply_patch", Kind: CodexCustomToolApplyPatch, ProxyAction: action}
+				} else {
+					ctx.CustomTools[name] = CodexCustomToolSpec{OpenAIName: name, Kind: CodexCustomToolRaw}
+				}
+				ctx.HasCustomTools = true
 			}
-			ctx.HasCustomTools = true
 			continue
 		}
 		tool, ok := rawTool.(map[string]interface{})
@@ -440,13 +475,12 @@ func BuildCodexToolContextFromRaw(tools []interface{}) CodexToolContext {
 			ctx.FunctionTools[name] = CodexFunctionToolSpec{Name: name}
 		case "namespace":
 			addNamespaceToolsToContext(&ctx, tool)
-		case "web_search", "local_shell", "computer_use":
+		case "web_search", "local_shell", "computer_use", "tool_search":
 			name, _ := tool["name"].(string)
 			if name == "" {
 				name = toolType
 			}
-			ctx.CustomTools[name] = CodexCustomToolSpec{OpenAIName: name, Kind: CodexCustomToolBuiltIn}
-			ctx.HasCustomTools = true
+			ctx.BuiltinTools[name] = toolType
 		}
 	}
 
@@ -535,6 +569,15 @@ func detectCodexCustomToolKind(tool map[string]interface{}) (CodexCustomToolKind
 func (ctx CodexToolContext) IsCustomToolProxy(upstreamName string) bool {
 	_, ok := ctx.CustomTools[upstreamName]
 	return ok
+}
+
+// IsBuiltinTool returns whether the given upstream name is a registered built-in tool of the requested kind.
+func (ctx CodexToolContext) IsBuiltinTool(name, kind string) bool {
+	if name == "" || kind == "" {
+		return false
+	}
+	toolType, ok := ctx.BuiltinTools[name]
+	return ok && toolType == kind
 }
 
 // OriginalCustomToolName returns the original Codex tool name for a proxy name.

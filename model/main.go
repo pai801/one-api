@@ -3,6 +3,7 @@ package model
 import (
 	"database/sql"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	glog "gorm.io/gorm/logger"
 )
 
 var DB *gorm.DB
@@ -83,12 +85,22 @@ func chooseDB(envName string) (*gorm.DB, error) {
 
 func openPostgreSQL(dsn string) (*gorm.DB, error) {
 	logger.SysLog("using PostgreSQL as database")
+	newLogger := glog.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		glog.Config{
+			SlowThreshold:             15 * time.Second, // 慢 SQL 阈值改为 5s
+			LogLevel:                  glog.Warn,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  true,
+		},
+	)
 	common.UsingPostgreSQL = true
 	return gorm.Open(postgres.New(postgres.Config{
 		DSN:                  dsn,
 		PreferSimpleProtocol: true, // disables implicit prepared statement usage
 	}), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
+		Logger:      newLogger,
 	})
 }
 

@@ -36,7 +36,7 @@ var ChannelBaseURLs = []string{
 	"https://api.stepfun.com",                   // 32
 	"",                                          // 33
 	"https://api.coze.com",                      // 34
-	"https://api.cohere.ai",                     // 35
+	"https://api.cohere.com",                    // 35
 	"https://api.deepseek.com",                  // 36
 	"https://api.cloudflare.com",                // 37
 	"https://api-free.deepl.com",                // 38
@@ -53,7 +53,7 @@ var ChannelBaseURLs = []string{
 	"https://dashscope.aliyuncs.com",            // 49
 	"",                                          // 50
 	"https://generativelanguage.googleapis.com/v1beta/openai/", // 51
-	"",                                          // 52 (Codex)
+	"", // 52 (Codex)
 }
 
 func init() {

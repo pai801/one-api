@@ -65,6 +65,17 @@ func parseTestResponse(resp string) (*openai.TextResponse, string, error) {
 	return &response, stringContent, nil
 }
 
+func formatFailureResponseBody(statusCode int, body []byte) []byte {
+	if statusCode == 0 && len(body) == 0 {
+		return nil
+	}
+	result, _ := json.Marshal(map[string]interface{}{
+		"status_code": statusCode,
+		"body":        string(body),
+	})
+	return result
+}
+
 func testChannel(ctx context.Context, channel *model.Channel, request *relaymodel.GeneralOpenAIRequest) (responseMessage string, err error, openaiErr *relaymodel.Error) {
 	startTime := time.Now()
 	w := httptest.NewRecorder()
@@ -110,6 +121,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	if err != nil {
 		return "", err, nil
 	}
+	var respBody []byte
 	defer func() {
 		logContent := fmt.Sprintf("渠道 %s 测试成功，响应：%s", channel.Name, responseMessage)
 		if err != nil || openaiErr != nil {
@@ -122,10 +134,12 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 			logContent = fmt.Sprintf("渠道 %s 测试失败，错误：%s", channel.Name, errorMessage)
 		}
 		go model.RecordTestLog(ctx, &model.Log{
-			ChannelId:   channel.Id,
-			ModelName:   modelName,
-			Content:     logContent,
-			ElapsedTime: helper.CalcElapsedTime(startTime),
+			ChannelId:    channel.Id,
+			ModelName:    modelName,
+			Content:      logContent,
+			ElapsedTime:  helper.CalcElapsedTime(startTime),
+			RequestBody:  string(jsonData),
+			ResponseBody: string(respBody),
 		})
 	}()
 	logger.SysLog(string(jsonData))
@@ -133,9 +147,14 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	c.Request.Body = io.NopCloser(requestBody)
 	resp, err := adaptor.DoRequest(c, meta, requestBody)
 	if err != nil {
+		respBody = formatFailureResponseBody(0, []byte(err.Error()))
 		return "", err, nil
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
+		rawBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		resp.Body = io.NopCloser(bytes.NewReader(rawBody))
+		respBody = formatFailureResponseBody(resp.StatusCode, rawBody)
 		err := controller.RelayErrorHandler(resp)
 		errorMessage := err.Error.Message
 		if errorMessage != "" {
@@ -145,20 +164,37 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	}
 	usage, respErr := adaptor.DoResponse(c, resp, meta)
 	if respErr != nil {
+		if resp != nil {
+			rawBody, _ := io.ReadAll(resp.Body)
+			resp.Body.Close()
+			resp.Body = io.NopCloser(bytes.NewReader(rawBody))
+			if len(rawBody) == 0 {
+				rawBody = []byte(respErr.Error.Message)
+			}
+			respBody = formatFailureResponseBody(resp.StatusCode, rawBody)
+		} else {
+			respBody = formatFailureResponseBody(0, []byte(respErr.Error.Message))
+		}
 		return "", fmt.Errorf("%s", respErr.Error.Message), &respErr.Error
 	}
 	if usage == nil {
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode
+		}
+		respBody = formatFailureResponseBody(statusCode, nil)
 		return "", errors.New("usage is nil"), nil
 	}
 	rawResponse := w.Body.String()
 	_, responseMessage, err = parseTestResponse(rawResponse)
 	if err != nil {
 		logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), rawResponse))
+		respBody = formatFailureResponseBody(200, []byte(rawResponse))
 		return "", err, nil
 	}
 	result := w.Result()
 	// print result.Body
-	respBody, err := io.ReadAll(result.Body)
+	respBody, err = io.ReadAll(result.Body)
 	if err != nil {
 		return "", err, nil
 	}

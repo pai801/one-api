@@ -9,7 +9,6 @@ import (
 	"io"
 	"math"
 	"net/http"
-
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -192,6 +191,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 	}
 
 	chatRequest := codex.ConvertResponsesToChatRequest(modelName, requestBody, stream)
+
 	chatRequestReader := bytes.NewBuffer(chatRequest)
 
 	chatMeta := &metaPkg.Meta{
@@ -255,6 +255,9 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 		common.SetEventStreamHeaders(c)
 		c.Writer.WriteHeader(http.StatusOK)
 
+		// 追加分隔符到文件（文件不存在则创建）
+		codex.AppendToFile("response_raw.txt", "----------\n")
+
 		var converterState any
 		scanner := bufio.NewScanner(resp.Body)
 		scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
@@ -264,7 +267,9 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 			if len(line) == 0 {
 				continue
 			}
-			events := codex.ConvertOpenAIChatToResponses(requestBody, nil, line, &converterState, fallbackReasoning)
+			// 追加当前行到文件
+			codex.AppendToFile("response_raw.txt", string(append(line, '\n')))
+			events := codex.ConvertOpenAIChatToResponsesWithContext(requestBody, nil, line, &converterState, fallbackReasoning)
 			for _, event := range events {
 				_, _ = c.Writer.WriteString(event)
 			}
@@ -305,7 +310,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 			ctx = context.WithValue(ctx, CtxKeyResponseBody, string(respBody))
 		}
 
-		responsesResponse := codex.ConvertChatResponseToResponses(respBody, modelName, fallbackReasoning)
+		responsesResponse := codex.ConvertChatResponseToResponsesWithContext(respBody, modelName, fallbackReasoning, requestBody)
 		c.JSON(http.StatusOK, json.RawMessage(responsesResponse))
 
 		// 解析 usage
@@ -405,7 +410,7 @@ func preConsumeQuotaForResponses(ctx context.Context, promptTokens int, ratio fl
 	// 判断是否信任用户：配额充足时不预扣
 	if userQuota > 100*preConsumedQuota {
 		preConsumedQuota = 0
-		logger.Infof(ctx, "user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota)
+		//		logger.Infof(ctx, "user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota)
 	}
 
 	if preConsumedQuota > 0 {

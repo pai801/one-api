@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import PropTypes from 'prop-types';
 
 import {
@@ -17,11 +18,33 @@ function formatJSON(value) {
   }
 }
 
-function DetailField({ label, value, onCopy }) {
+const PREVIEW_LINES = 5;
+
+function DetailField({ label, value, onCopy, collapsible }) {
+  const [collapsed, setCollapsed] = useState(true);
+
+  const lines = value.split('\n');
+  const isLong = lines.length > PREVIEW_LINES + 1;
+  const canCollapse = collapsible && isLong;
+  const displayValue = canCollapse && collapsed
+    ? lines.slice(0, PREVIEW_LINES).join('\n') + '\n\n...'
+    : value;
+
   return (
     <div style={{ marginBottom: '1em' }}>
       <Header sub>
         {label}
+        {canCollapse && (
+          <Button
+            size='mini'
+            compact
+            floated='right'
+            onClick={() => setCollapsed(!collapsed)}
+            style={{ marginLeft: '0.5em' }}
+          >
+            {collapsed ? '展开' : '折叠'}
+          </Button>
+        )}
         {onCopy && (
           <Button
             size='mini'
@@ -43,7 +66,7 @@ function DetailField({ label, value, onCopy }) {
           wordBreak: 'break-all',
         }}
       >
-        {value}
+        {displayValue}
       </Segment>
     </div>
   );
@@ -53,6 +76,7 @@ DetailField.propTypes = {
   label: PropTypes.string.isRequired,
   value: PropTypes.string.isRequired,
   onCopy: PropTypes.func,
+  collapsible: PropTypes.bool,
 };
 
 export default function DetailDialog({ open, onClose, logItem }) {
@@ -79,12 +103,12 @@ export default function DetailDialog({ open, onClose, logItem }) {
 
   const formattedResponse = formatJSON(logItem.response_body);
   if (formattedResponse) {
-    fields.push({ label: '响应体', value: formattedResponse, copyable: true });
+    fields.push({ label: '响应体', value: formattedResponse, copyable: true, collapsible: true });
   }
 
   const formattedBody = formatJSON(logItem.request_body);
   if (formattedBody) {
-    fields.push({ label: '请求体', value: formattedBody, copyable: true });
+    fields.push({ label: '请求体', value: formattedBody, copyable: true, collapsible: true });
   }
 
   return (
@@ -99,6 +123,7 @@ export default function DetailDialog({ open, onClose, logItem }) {
             label={field.label}
             value={field.value}
             onCopy={field.copyable ? () => handleCopy(field.value) : undefined}
+            collapsible={field.collapsible}
           />
         ))}
       </Modal.Content>
