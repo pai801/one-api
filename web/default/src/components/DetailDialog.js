@@ -18,17 +18,18 @@ function formatJSON(value) {
   }
 }
 
-const PREVIEW_LINES = 5;
-
 function DetailField({ label, value, onCopy, collapsible }) {
-  const [collapsed, setCollapsed] = useState(true);
-
-  const lines = value.split('\n');
-  const isLong = lines.length > PREVIEW_LINES + 1;
+  const [expanded, setExpanded] = useState(true);
+  const isLong = value.split('\n').length > 5;
   const canCollapse = collapsible && isLong;
-  const displayValue = canCollapse && collapsed
-    ? lines.slice(0, PREVIEW_LINES).join('\n') + '\n\n...'
-    : value;
+
+  const segmentStyle = {
+    fontFamily: 'monospace',
+    fontSize: '0.8rem',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-all',
+    ...(canCollapse && !expanded ? { maxHeight: 300, overflow: 'auto' } : {}),
+  };
 
   return (
     <div style={{ marginBottom: '1em' }}>
@@ -39,10 +40,11 @@ function DetailField({ label, value, onCopy, collapsible }) {
             size='mini'
             compact
             floated='right'
-            onClick={() => setCollapsed(!collapsed)}
+            onClick={() => setExpanded(!expanded)}
             style={{ marginLeft: '0.5em' }}
+            aria-expanded={expanded}
           >
-            {collapsed ? '展开' : '折叠'}
+            {expanded ? '收起' : '展开'}
           </Button>
         )}
         {onCopy && (
@@ -59,14 +61,10 @@ function DetailField({ label, value, onCopy, collapsible }) {
       </Header>
       <Segment
         secondary
-        style={{
-          fontFamily: 'monospace',
-          fontSize: '0.8rem',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-        }}
+        style={segmentStyle}
+        tabIndex={canCollapse && !expanded ? 0 : undefined}
       >
-        {displayValue}
+        {value}
       </Segment>
     </div>
   );
@@ -112,7 +110,7 @@ export default function DetailDialog({ open, onClose, logItem }) {
   }
 
   return (
-    <Modal open={open} onClose={onClose} size='large'>
+    <Modal key={logItem?.id ?? 'empty'} open={open} onClose={onClose} size='large'>
       <Modal.Header>
         详情
       </Modal.Header>

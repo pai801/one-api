@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import PropTypes from 'prop-types';
 
 import {
+  Button,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -9,6 +11,10 @@ import {
   IconButton
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
+import ContentCopy from '@mui/icons-material/ContentCopy';
+import UnfoldMore from '@mui/icons-material/UnfoldMore';
+import UnfoldLess from '@mui/icons-material/UnfoldLess';
+import { copy } from 'utils/common';
 
 function formatJSON(value) {
   if (!value) return null;
@@ -19,12 +25,42 @@ function formatJSON(value) {
   }
 }
 
-function DetailField({ label, value }) {
+function DetailField({ label, value, code }) {
+  const [expanded, setExpanded] = useState(true);
+
   return (
     <Box sx={{ mb: 2 }}>
-      <Typography variant="subtitle2" sx={{ mb: 0.5, color: 'text.secondary' }}>
-        {label}
-      </Typography>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 0.5
+        }}
+      >
+        <Typography variant="subtitle2" sx={{ color: 'text.secondary' }}>
+          {label}
+        </Typography>
+        {code && (
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <Button
+              size="small"
+              startIcon={<ContentCopy />}
+              onClick={() => copy(value, label)}
+            >
+              复制
+            </Button>
+            <Button
+              size="small"
+              startIcon={expanded ? <UnfoldLess /> : <UnfoldMore />}
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+            >
+              {expanded ? '收起' : '展开'}
+            </Button>
+          </Box>
+        )}
+      </Box>
       <Typography
         variant="body2"
         component="pre"
@@ -38,6 +74,11 @@ function DetailField({ label, value }) {
           borderRadius: 1,
           m: 0
         }}
+        style={
+          code && !expanded
+            ? { maxHeight: 300, overflow: 'auto' }
+            : undefined
+        }
       >
         {value}
       </Typography>
@@ -47,7 +88,8 @@ function DetailField({ label, value }) {
 
 DetailField.propTypes = {
   label: PropTypes.string.isRequired,
-  value: PropTypes.string.isRequired
+  value: PropTypes.string.isRequired,
+  code: PropTypes.bool
 };
 
 export default function DetailDialog({ open, onClose, logItem }) {
@@ -66,12 +108,12 @@ export default function DetailDialog({ open, onClose, logItem }) {
 
   const formattedBody = formatJSON(logItem.request_body);
   if (formattedBody) {
-    fields.push({ label: '请求体', value: formattedBody });
+    fields.push({ label: '请求体', value: formattedBody, code: true });
   }
 
   const formattedResponse = formatJSON(logItem.response_body);
   if (formattedResponse) {
-    fields.push({ label: '响应体', value: formattedResponse });
+    fields.push({ label: '响应体', value: formattedResponse, code: true });
   }
 
   return (
@@ -93,7 +135,7 @@ export default function DetailDialog({ open, onClose, logItem }) {
       </DialogTitle>
       <DialogContent dividers>
         {fields.map((field, index) => (
-          <DetailField key={index} label={field.label} value={field.value} />
+          <DetailField key={index} label={field.label} value={field.value} code={field.code} />
         ))}
       </DialogContent>
     </Dialog>
