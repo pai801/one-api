@@ -60,21 +60,21 @@ func relayResponsesDirect(c *gin.Context, ctxMeta *metaPkg.Meta) *model.ErrorWit
 	ctx := c.Request.Context()
 	relayAdaptor := relay2.GetAdaptor(ctxMeta.APIType)
 	if relayAdaptor == nil {
-		logger.Errorf(ctx, "[%s] %+v", "invalid api type", nil)
+		logger.Log.Errorf("[%s] %+v", "invalid api type", nil)
 		return openai.ErrorWrapper(nil, "invalid api type", http.StatusBadRequest)
 	}
 	relayAdaptor.Init(ctxMeta)
 
 	requestBody, err := common.GetRequestBody(c)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "get request body failed", err)
+		logger.Log.Errorf("[%s] %+v", "get request body failed", err)
 		return openai.ErrorWrapper(err, "get request body failed", http.StatusInternalServerError)
 	}
 
 	// 解析请求体以获取模型名称和流式标记
 	var req map[string]interface{}
 	if err := json.Unmarshal(requestBody, &req); err != nil {
-		logger.Warnf(ctx, "[responses] failed to parse request body: %v", err)
+		logger.Log.Warnf("[responses] failed to parse request body: %v", err)
 	} else {
 		if modelName, ok := req["model"].(string); ok {
 			ctxMeta.OriginModelName = modelName
@@ -104,13 +104,13 @@ func relayResponsesDirect(c *gin.Context, ctxMeta *metaPkg.Meta) *model.ErrorWit
 	promptTokens := estimateResponsesPromptTokens(req)
 	preConsumedQuota, bizErr := preConsumeQuotaForResponses(ctx, promptTokens, ratio, ctxMeta)
 	if bizErr != nil {
-		logger.Warnf(ctx, "preConsumeQuota failed: %+v", *bizErr)
+		logger.Log.Warnf("preConsumeQuota failed: %+v", *bizErr)
 		return bizErr
 	}
 
 	resp, err := relayAdaptor.DoRequest(c, ctxMeta, bytes.NewBuffer(requestBody))
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "do request failed", err)
+		logger.Log.Errorf("[%s] %+v", "do request failed", err)
 		return openai.ErrorWrapper(err, "do request failed", http.StatusInternalServerError)
 	}
 
@@ -126,7 +126,7 @@ func relayResponsesDirect(c *gin.Context, ctxMeta *metaPkg.Meta) *model.ErrorWit
 		}
 	}
 	if relayErr != nil {
-		logger.Errorf(ctx, "DoResponse failed: %+v", relayErr)
+		logger.Log.Errorf("DoResponse failed: %+v", relayErr)
 		billing.ReturnPreConsumedQuota(ctx, preConsumedQuota, ctxMeta.TokenId)
 		return relayErr
 	}
@@ -153,20 +153,20 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 	ctx := c.Request.Context()
 	relayAdaptor := relay2.GetAdaptor(ctxMeta.APIType)
 	if relayAdaptor == nil {
-		logger.Errorf(ctx, "[%s] %+v", "failed to get openai adaptor", nil)
+		logger.Log.Errorf("[%s] %+v", "failed to get openai adaptor", nil)
 		return openai.ErrorWrapper(nil, "failed to get openai adaptor", http.StatusInternalServerError)
 	}
 	relayAdaptor.Init(ctxMeta)
 
 	requestBody, err := common.GetRequestBody(c)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "get request body failed", err)
+		logger.Log.Errorf("[%s] %+v", "get request body failed", err)
 		return openai.ErrorWrapper(err, "get request body failed", http.StatusInternalServerError)
 	}
 
 	var req map[string]interface{}
 	if err := json.Unmarshal(requestBody, &req); err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "invalid request body", err)
+		logger.Log.Errorf("[%s] %+v", "invalid request body", err)
 		return openai.ErrorWrapper(err, "invalid request body", http.StatusBadRequest)
 	}
 
@@ -231,7 +231,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 	promptTokens := estimateResponsesPromptTokens(req)
 	preConsumedQuota, bizErr := preConsumeQuotaForResponses(ctx, promptTokens, ratio, ctxMeta)
 	if bizErr != nil {
-		logger.Warnf(ctx, "preConsumeQuota failed: %+v", *bizErr)
+		logger.Log.Warnf("preConsumeQuota failed: %+v", *bizErr)
 		return bizErr
 	}
 
@@ -239,7 +239,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 
 	resp, err := relayAdaptor.DoRequest(c, chatMeta, chatRequestReader)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "do request failed", err)
+		logger.Log.Errorf("[%s] %+v", "do request failed", err)
 		return openai.ErrorWrapper(err, "do request failed", http.StatusInternalServerError)
 	}
 
@@ -277,7 +277,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 		}
 
 		if err := scanner.Err(); err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "scan response failed", err)
+			logger.Log.Errorf("[%s] %+v", "scan response failed", err)
 		}
 
 		// 从流状态中提取 usage 和完整的响应体用于日志记录
@@ -300,7 +300,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 		// 非流式响应处理
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "read response body failed", err)
+			logger.Log.Errorf("[%s] %+v", "read response body failed", err)
 			billing.ReturnPreConsumedQuota(ctx, preConsumedQuota, ctxMeta.TokenId)
 			return openai.ErrorWrapper(err, "read response body failed", http.StatusInternalServerError)
 		}
@@ -398,31 +398,31 @@ func preConsumeQuotaForResponses(ctx context.Context, promptTokens int, ratio fl
 
 	userQuota, err := dbmodel.CacheGetUserQuota(ctx, meta.UserId)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "get_user_quota_failed", err)
+		logger.Log.Errorf("[%s] %+v", "get_user_quota_failed", err)
 		return preConsumedQuota, openai.ErrorWrapper(err, "get_user_quota_failed", http.StatusInternalServerError)
 	}
 
 	if userQuota-preConsumedQuota < 0 {
-		logger.Errorf(ctx, "[%s] %+v", "insufficient_user_quota", nil)
+		logger.Log.Errorf("[%s] %+v", "insufficient_user_quota", nil)
 		return preConsumedQuota, openai.ErrorWrapper(nil, "insufficient_user_quota", http.StatusForbidden)
 	}
 
 	// 判断是否信任用户：配额充足时不预扣
 	if userQuota > 100*preConsumedQuota {
 		preConsumedQuota = 0
-		//		logger.Infof(ctx, "user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota)
+		//		logger.Log.Infof("user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota)
 	}
 
 	if preConsumedQuota > 0 {
 		err = dbmodel.CacheDecreaseUserQuota(meta.UserId, preConsumedQuota)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "decrease_user_quota_failed", err)
+			logger.Log.Errorf("[%s] %+v", "decrease_user_quota_failed", err)
 			return preConsumedQuota, openai.ErrorWrapper(err, "decrease_user_quota_failed", http.StatusInternalServerError)
 		}
 
 		err = dbmodel.PreConsumeTokenQuota(meta.TokenId, preConsumedQuota)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "pre_consume_token_quota_failed", err)
+			logger.Log.Errorf("[%s] %+v", "pre_consume_token_quota_failed", err)
 			return preConsumedQuota, openai.ErrorWrapper(err, "pre_consume_token_quota_failed", http.StatusForbidden)
 		}
 	}
@@ -432,7 +432,7 @@ func preConsumeQuotaForResponses(ctx context.Context, promptTokens int, ratio fl
 
 func postConsumeQuotaForResponses(ctx context.Context, usage *model.Usage, meta *metaPkg.Meta, ratio float64, preConsumedQuota int64, modelRatio float64, groupRatio float64, reqBody string, respBody string, reqHeader string) {
 	if usage == nil {
-		logger.Error(ctx, "usage is nil, which is unexpected")
+		logger.Log.Errorf("usage is nil, which is unexpected")
 		return
 	}
 
@@ -454,12 +454,12 @@ func postConsumeQuotaForResponses(ctx context.Context, usage *model.Usage, meta 
 	quotaDelta := quota - preConsumedQuota
 	err := dbmodel.PostConsumeTokenQuota(meta.TokenId, quotaDelta)
 	if err != nil {
-		logger.Error(ctx, "error consuming token remain quota: "+err.Error())
+		logger.Log.Errorf("error consuming token remain quota: "+err.Error())
 	}
 
 	err = dbmodel.CacheUpdateUserQuota(ctx, meta.UserId)
 	if err != nil {
-		logger.Error(ctx, "error update user quota cache: "+err.Error())
+		logger.Log.Errorf("error update user quota cache: "+err.Error())
 	}
 
 	logContent := fmt.Sprintf("Responses API - 倍率：%.2f × %.2f × %.2f", modelRatio, groupRatio, completionRatio)
@@ -493,12 +493,12 @@ func isErrorResp(resp *http.Response) bool {
 func relayErrorHandler(resp *http.Response) *model.ErrorWithStatusCode {
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Errorf(context.TODO(), "[%s] %+v", "read response body failed", err)
+		logger.Log.Errorf("[%s] %+v", "read response body failed", err)
 		return openai.ErrorWrapper(err, "read response body failed", http.StatusInternalServerError)
 	}
 	err = resp.Body.Close()
 	if err != nil {
-		logger.Errorf(context.TODO(), "[%s] %+v", "close response body failed", err)
+		logger.Log.Errorf("[%s] %+v", "close response body failed", err)
 		return openai.ErrorWrapper(err, "close response body failed", http.StatusInternalServerError)
 	}
 	resp.Body = io.NopCloser(bytes.NewBuffer(respBody))
@@ -506,7 +506,7 @@ func relayErrorHandler(resp *http.Response) *model.ErrorWithStatusCode {
 	var openaiErr model.Error
 	err = json.Unmarshal(respBody, &openaiErr)
 	if err != nil {
-		logger.Errorf(context.TODO(), "[%s] raw response: %s, err: %+v", "unmarshal response body failed", string(respBody), err)
+		logger.Log.Errorf("[%s] raw response: %s, err: %+v", "unmarshal response body failed", string(respBody), err)
 		openaiErr = model.Error{
 			Message: string(respBody),
 			Type:    "server_error",

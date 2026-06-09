@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -70,7 +71,7 @@ func TestAutoDistribute(t *testing.T) {
 			{Name: "A", Id: 1, Models: "gpt-4,gpt-3.5-turbo", ModelsAlias: "gpt4,gpt35"},
 			{Name: "B", Id: 2, Models: "claude-3-opus", ModelsAlias: "claude3opus"},
 		}
-		ch, model, err := autoDistribute("autodist_test_1", channels)
+		ch, model, err := autoDistribute(context.Background(), "autodist_test_1", channels)
 		So(err, ShouldBeNil)
 		So(ch, ShouldNotBeNil)
 		// first call reads index 0 (before increment), returns channel A
@@ -80,8 +81,75 @@ func TestAutoDistribute(t *testing.T) {
 	})
 
 	Convey("autoDistribute with empty channels returns error", t, func() {
-		_, _, err := autoDistribute("autodist_test_2", []*model.Channel{})
+		_, _, err := autoDistribute(context.Background(), "autodist_test_2", []*model.Channel{})
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func clearAffinity() {
+	AffinityGlobal.Remove(999, "gpt4turbo")
+	AffinityGlobal.Remove(999, "gpt35turbo")
+}
+
+func TestNonAutoDistributeNoAffinity(t *testing.T) {
+	Convey("nonAutoDistribute with no affinity falls back to weighted select", t, func() {
+		clearAffinity()
+		channels := []*model.Channel{
+			{Name: "A", Id: 1, ModelsAlias: "gpt4turbo", Models: "gpt-4-turbo"},
+		}
+
+		ch, model, err := nonAutoDistribute(context.Background(), 999, "gpt4turbo", channels)
+		So(err, ShouldBeNil)
+		So(ch.Name, ShouldEqual, "A")
+		So(ch.Id, ShouldEqual, 1)
+		So(model, ShouldEqual, "gpt-4-turbo")
+	})
+
+	Convey("nonAutoDistribute with no matched channels returns error", t, func() {
+		clearAffinity()
+		channels := []*model.Channel{
+			{Name: "A", Id: 1, ModelsAlias: "gpt4turbo"},
+		}
+
+		_, _, err := nonAutoDistribute(context.Background(), 999, "nonexistent-model", channels)
+		So(err, ShouldNotBeNil)
+	})
+
+	Convey("nonAutoDistribute with empty channel list returns error", t, func() {
+		clearAffinity()
+		_, _, err := nonAutoDistribute(context.Background(), 999, "gpt4turbo", []*model.Channel{})
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestNonAutoDistributeWithAffinity(t *testing.T) {
+	Convey("nonAutoDistribute respects affinity when channel is in matched set", t, func() {
+		clearAffinity()
+		AffinityGlobal.Set(999, "gpt4turbo", 2)
+		channels := []*model.Channel{
+			{Name: "A", Id: 1, ModelsAlias: "gpt4turbo", Models: "gpt-4-turbo"},
+			{Name: "B", Id: 2, ModelsAlias: "gpt4turbo", Models: "gpt-4-turbo"},
+		}
+
+		ch, model, err := nonAutoDistribute(context.Background(), 999, "gpt4turbo", channels)
+		So(err, ShouldBeNil)
+		So(ch.Name, ShouldEqual, "B")
+		So(ch.Id, ShouldEqual, 2)
+		So(model, ShouldEqual, "gpt-4-turbo")
+	})
+
+	Convey("nonAutoDistribute falls back to weighted when affinity channel missing", t, func() {
+		clearAffinity()
+		AffinityGlobal.Set(999, "gpt4turbo", 99) // affinity points to channel not in the list
+		channels := []*model.Channel{
+			{Name: "A", Id: 1, ModelsAlias: "gpt4turbo", Models: "gpt-4-turbo"},
+		}
+
+		ch, model, err := nonAutoDistribute(context.Background(), 999, "gpt4turbo", channels)
+		So(err, ShouldBeNil)
+		So(ch.Name, ShouldEqual, "A")
+		So(ch.Id, ShouldEqual, 1)
+		So(model, ShouldEqual, "gpt-4-turbo")
 	})
 }
 

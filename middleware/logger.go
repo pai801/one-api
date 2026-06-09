@@ -1,34 +1,54 @@
 package middleware
 
 import (
-	"fmt"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common/env"
 	"github.com/songquanpeng/one-api/common/helper"
+	"github.com/songquanpeng/one-api/common/logger"
 )
 
 func SetUpLogger(server *gin.Engine) {
 	skipPaths := getSkipPaths()
-	server.Use(gin.LoggerWithConfig(gin.LoggerConfig{
-		Formatter: func(param gin.LogFormatterParams) string {
-			var requestID string
-			if param.Keys != nil {
-				requestID = param.Keys[helper.RequestIdKey].(string)
+	server.Use(func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+
+		c.Next()
+
+		for _, p := range skipPaths {
+			if strings.HasPrefix(path, p) {
+				return
 			}
-			return fmt.Sprintf("[GIN] %s | %s | %3d | %13v | %15s | %7s %s\n",
-				param.TimeStamp.Format("2006/01/02 - 15:04:05"),
-				requestID,
-				param.StatusCode,
-				param.Latency,
-				param.ClientIP,
-				param.Method,
-				param.Path,
-			)
-		},
-		SkipPaths: skipPaths,
-	}))
+		}
+
+		latency := time.Since(start)
+		clientIP := c.ClientIP()
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+
+		var requestID string
+		if c.Keys != nil {
+			if rid, ok := c.Keys[helper.RequestIdKey]; ok {
+				requestID, _ = rid.(string)
+			}
+		}
+
+		if raw != "" {
+			path = path + "?" + raw
+		}
+
+		logger.Log.Infow(path,
+			"status", statusCode,
+			"latency", latency,
+			"client_ip", clientIP,
+			"method", method,
+			"request_id", requestID,
+		)
+	})
 }
 
 func getSkipPaths() []string {

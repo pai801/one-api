@@ -78,28 +78,28 @@ func preConsumeQuota(ctx context.Context, textRequest *relaymodel.GeneralOpenAIR
 
 	userQuota, err := model.CacheGetUserQuota(ctx, meta.UserId)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "get_user_quota_failed", err)
+		logger.Log.Errorf("[%s] %+v", "get_user_quota_failed", err)
 		return preConsumedQuota, openai.ErrorWrapper(err, "get_user_quota_failed", http.StatusInternalServerError)
 	}
 	if userQuota-preConsumedQuota < 0 {
-		logger.Errorf(ctx, "[%s] %+v", "insufficient_user_quota", errors.New("user quota is not enough"))
+		logger.Log.Errorf("[%s] %+v", "insufficient_user_quota", errors.New("user quota is not enough"))
 		return preConsumedQuota, openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
 	}
 	err = model.CacheDecreaseUserQuota(meta.UserId, preConsumedQuota)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "decrease_user_quota_failed", err)
+		logger.Log.Errorf("[%s] %+v", "decrease_user_quota_failed", err)
 		return preConsumedQuota, openai.ErrorWrapper(err, "decrease_user_quota_failed", http.StatusInternalServerError)
 	}
 	if userQuota > 100*preConsumedQuota {
 		// in this case, we do not pre-consume quota
 		// because the user has enough quota
 		preConsumedQuota = 0
-		logger.Info(ctx, fmt.Sprintf("user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota))
+		logger.Log.Infof("user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota)
 	}
 	if preConsumedQuota > 0 {
 		err := model.PreConsumeTokenQuota(meta.TokenId, preConsumedQuota)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "pre_consume_token_quota_failed", err)
+			logger.Log.Errorf("[%s] %+v", "pre_consume_token_quota_failed", err)
 			return preConsumedQuota, openai.ErrorWrapper(err, "pre_consume_token_quota_failed", http.StatusForbidden)
 		}
 	}
@@ -108,7 +108,7 @@ func preConsumeQuota(ctx context.Context, textRequest *relaymodel.GeneralOpenAIR
 
 func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.Meta, textRequest *relaymodel.GeneralOpenAIRequest, ratio float64, preConsumedQuota int64, modelRatio float64, groupRatio float64, systemPromptReset bool) {
 	if usage == nil {
-		logger.Error(ctx, "usage is nil, which is unexpected")
+		logger.Log.Errorf("usage is nil, which is unexpected")
 		return
 	}
 	var quota int64
@@ -128,11 +128,11 @@ func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.M
 	quotaDelta := quota - preConsumedQuota
 	err := model.PostConsumeTokenQuota(meta.TokenId, quotaDelta)
 	if err != nil {
-		logger.Error(ctx, "error consuming token remain quota: "+err.Error())
+		logger.Log.Errorf("error consuming token remain quota: "+err.Error())
 	}
 	err = model.CacheUpdateUserQuota(ctx, meta.UserId)
 	if err != nil {
-		logger.Error(ctx, "error update user quota cache: "+err.Error())
+		logger.Log.Errorf("error update user quota cache: "+err.Error())
 	}
 	logContent := fmt.Sprintf("倍率：%.2f × %.2f × %.2f", modelRatio, groupRatio, completionRatio)
 
@@ -216,13 +216,13 @@ func setSystemPrompt(ctx context.Context, request *relaymodel.GeneralOpenAIReque
 	}
 	if request.Messages[0].Role == role.System {
 		request.Messages[0].Content = prompt
-		logger.Infof(ctx, "rewrite system prompt")
+		logger.Log.Infof("rewrite system prompt")
 		return true
 	}
 	request.Messages = append([]relaymodel.Message{{
 		Role:    role.System,
 		Content: prompt,
 	}}, request.Messages...)
-	logger.Infof(ctx, "add system prompt")
+	logger.Log.Infof("add system prompt")
 	return true
 }

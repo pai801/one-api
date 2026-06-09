@@ -196,7 +196,7 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 		var aliResponse ChatResponse
 		err := json.Unmarshal([]byte(data), &aliResponse)
 		if err != nil {
-			logger.SysError("error unmarshalling stream response: " + err.Error())
+			logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 			continue
 		}
 		if aliResponse.Usage.OutputTokens != 0 {
@@ -210,12 +210,12 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 		}
 		err = render.ObjectData(c, response)
 		if err != nil {
-			logger.SysError(err.Error())
+			logger.Log.Errorf(err.Error())
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.SysError("error reading stream: " + err.Error())
+		logger.Log.Errorf("error reading stream: " + err.Error())
 	}
 
 	render.Done(c)
@@ -228,7 +228,6 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 }
 
 func Handler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {
-	ctx := c.Request.Context()
 	var aliResponse ChatResponse
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -238,7 +237,7 @@ func Handler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCode, *
 	if err != nil {
 		return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError), nil
 	}
-	logger.Debugf(ctx, "response body: %s\n", responseBody)
+	logger.Log.Debugf("response body: %s\n", responseBody)
 	err = json.Unmarshal(responseBody, &aliResponse)
 	if err != nil {
 		return openai.ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError), nil

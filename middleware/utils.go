@@ -18,7 +18,7 @@ func abortWithMessage(c *gin.Context, statusCode int, message string) {
 		},
 	})
 	c.Abort()
-	logger.Error(c.Request.Context(), message)
+	logger.Log.Errorf(message)
 }
 
 func getRequestModel(c *gin.Context) (string, error) {

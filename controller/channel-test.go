@@ -142,7 +142,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 			ResponseBody: string(respBody),
 		})
 	}()
-	logger.SysLog(string(jsonData))
+	logger.Log.Infof(string(jsonData))
 	requestBody := bytes.NewBuffer(jsonData)
 	c.Request.Body = io.NopCloser(requestBody)
 	resp, err := adaptor.DoRequest(c, meta, requestBody)
@@ -188,7 +188,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	rawResponse := w.Body.String()
 	_, responseMessage, err = parseTestResponse(rawResponse)
 	if err != nil {
-		logger.SysError(fmt.Sprintf("failed to parse error: %s, \nresponse: %s", err.Error(), rawResponse))
+		logger.Log.Errorf("failed to parse error: %s, \nresponse: %s", err.Error(), rawResponse)
 		respBody = formatFailureResponseBody(200, []byte(rawResponse))
 		return "", err, nil
 	}
@@ -198,7 +198,7 @@ func testChannel(ctx context.Context, channel *model.Channel, request *relaymode
 	if err != nil {
 		return "", err, nil
 	}
-	logger.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	logger.Log.Infof("testing channel #%d, response: \n%s", channel.Id, string(respBody))
 	return responseMessage, nil, nil
 }
 
@@ -302,7 +302,7 @@ func testChannels(ctx context.Context, notify bool, scope string) error {
 		if notify {
 			err := message.Notify(message.ByAll, "渠道测试完成", "", "渠道测试完成，如果没有收到禁用通知，说明所有渠道都正常")
 			if err != nil {
-				logger.SysError(fmt.Sprintf("failed to send email: %s", err.Error()))
+				logger.Log.Errorf("failed to send email: %s", err.Error())
 			}
 		}
 	}()
@@ -334,8 +334,8 @@ func AutomaticallyTestChannels(frequency int) {
 	ctx := context.Background()
 	for {
 		time.Sleep(time.Duration(frequency) * time.Minute)
-		logger.SysLog("testing all channels")
+		logger.Log.Infof("testing all channels")
 		_ = testChannels(ctx, false, "all")
-		logger.SysLog("channel test finished")
+		logger.Log.Infof("channel test finished")
 	}
 }

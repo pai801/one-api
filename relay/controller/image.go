@@ -108,7 +108,7 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	meta := meta.GetByContext(c)
 	imageRequest, err := getImageRequest(c, meta.Mode)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "invalid_image_request", err)
+		logger.Log.Errorf("[%s] %+v", "invalid_image_request", err)
 		return openai.ErrorWrapper(err, "invalid_image_request", http.StatusBadRequest)
 	}
 
@@ -126,7 +126,7 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 	imageCostRatio, err := getImageCostRatio(imageRequest)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "get_image_cost_ratio_failed", err)
+		logger.Log.Errorf("[%s] %+v", "get_image_cost_ratio_failed", err)
 		return openai.ErrorWrapper(err, "get_image_cost_ratio_failed", http.StatusInternalServerError)
 	}
 
@@ -139,7 +139,7 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	if isModelMapped || meta.ChannelType == channeltype.Azure { // make Azure channel request body
 		jsonStr, err := json.Marshal(imageRequest)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "marshal_image_request_failed", err)
+			logger.Log.Errorf("[%s] %+v", "marshal_image_request_failed", err)
 			return openai.ErrorWrapper(err, "marshal_image_request_failed", http.StatusInternalServerError)
 		}
 		requestBody = bytes.NewBuffer(jsonStr)
@@ -149,7 +149,7 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 	adaptor := relay.GetAdaptor(meta.APIType)
 	if adaptor == nil {
-		logger.Errorf(ctx, "[%s] %+v", "invalid_api_type", fmt.Errorf("invalid api type: %d", meta.APIType))
+		logger.Log.Errorf("[%s] %+v", "invalid_api_type", fmt.Errorf("invalid api type: %d", meta.APIType))
 		return openai.ErrorWrapper(fmt.Errorf("invalid api type: %d", meta.APIType), "invalid_api_type", http.StatusBadRequest)
 	}
 	adaptor.Init(meta)
@@ -162,12 +162,12 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		channeltype.Baidu:
 		finalRequest, err := adaptor.ConvertImageRequest(imageRequest)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "convert_image_request_failed", err)
+			logger.Log.Errorf("[%s] %+v", "convert_image_request_failed", err)
 			return openai.ErrorWrapper(err, "convert_image_request_failed", http.StatusInternalServerError)
 		}
 		jsonStr, err := json.Marshal(finalRequest)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "marshal_image_request_failed", err)
+			logger.Log.Errorf("[%s] %+v", "marshal_image_request_failed", err)
 			return openai.ErrorWrapper(err, "marshal_image_request_failed", http.StatusInternalServerError)
 		}
 		requestBody = bytes.NewBuffer(jsonStr)
@@ -188,14 +188,14 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	}
 
 	if userQuota-quota < 0 {
-		logger.Errorf(ctx, "[%s] %+v", "insufficient_user_quota", errors.New("user quota is not enough"))
+		logger.Log.Errorf("[%s] %+v", "insufficient_user_quota", errors.New("user quota is not enough"))
 		return openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
 	}
 
 	// do request
 	resp, err := adaptor.DoRequest(c, meta, requestBody)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "do_request_failed", err)
+		logger.Log.Errorf("[%s] %+v", "do_request_failed", err)
 		return openai.ErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
 
@@ -208,11 +208,11 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 		err := model.PostConsumeTokenQuota(meta.TokenId, quota)
 		if err != nil {
-			logger.SysError("error consuming token remain quota: " + err.Error())
+			logger.Log.Errorf("error consuming token remain quota: " + err.Error())
 		}
 		err = model.CacheUpdateUserQuota(ctx, meta.UserId)
 		if err != nil {
-			logger.SysError("error update user quota cache: " + err.Error())
+			logger.Log.Errorf("error update user quota cache: " + err.Error())
 		}
 		if quota != 0 {
 			tokenName := c.GetString(ctxkey.TokenName)
@@ -236,7 +236,7 @@ func RelayImageHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	// do response
 	_, respErr := adaptor.DoResponse(c, resp, meta)
 	if respErr != nil {
-		logger.Errorf(ctx, "respErr is not nil: %+v", respErr)
+		logger.Log.Errorf("respErr is not nil: %+v", respErr)
 		return respErr
 	}
 

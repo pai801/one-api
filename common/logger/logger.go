@@ -1,160 +1,56 @@
 package logger
 
 import (
-	"context"
-	"fmt"
 	"io"
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
 	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
-
 	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/helper"
-)
-
-type loggerLevel string
-
-const (
-	loggerDEBUG loggerLevel = "DEBUG"
-	loggerINFO  loggerLevel = "INFO"
-	loggerWarn  loggerLevel = "WARN"
-	loggerError loggerLevel = "ERROR"
-	loggerFatal loggerLevel = "FATAL"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var setupLogOnce sync.Once
 
+// SetupLogger initializes the zap-backed global logger.
+// Called once at startup. Uses LogDir and config.DebugEnabled to configure output and level.
 func SetupLogger() {
 	setupLogOnce.Do(func() {
+		cfg := &LogCfg{
+			Stdout: DefaultLogStdout,
+			Level:  DefaultLogLevel,
+		}
 		if LogDir != "" {
-			var logPath string
-			if config.OnlyOneLogFile {
-				logPath = filepath.Join(LogDir, "oneapi.log")
-			} else {
-				logPath = filepath.Join(LogDir, fmt.Sprintf("oneapi-%s.log", time.Now().Format("20060102")))
+			cfg.Stdout = "file"
+		} else {
+			cfg.Stdout = "console"
+		}
+		cfg.Directory = LogDir
+		cfg.MaxSize = DefaultLogMaxSize
+		cfg.MaxBackups = DefaultLogMaxBackups
+		cfg.MaxAge = DefaultLogMaxAge
+		if config.DebugEnabled {
+			cfg.Level = "debug"
+		}
+		if _, err := NewLogger(cfg); err != nil {
+			log.Fatalf("failed to initialize logger: %v", err)
+		}
+
+		// When file logging is configured, also wire Gin error/recovery output
+		// and any stray stderr writes to the lumberjack sink so they follow the
+		// same log destination.
+		if LogDir != "" {
+			lj := &lumberjack.Logger{
+				Filename:   filepath.Join(LogDir, "access.log"),
+				MaxSize:    DefaultLogMaxSize,
+				MaxBackups: DefaultLogMaxBackups,
+				MaxAge:     DefaultLogMaxAge,
+				LocalTime:  true,
+				Compress:   true,
 			}
-			fd, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			if err != nil {
-				log.Fatal("failed to open log file")
-			}
-			gin.DefaultWriter = io.MultiWriter(os.Stdout, fd)
-			gin.DefaultErrorWriter = io.MultiWriter(os.Stderr, fd)
+			gin.DefaultErrorWriter = io.MultiWriter(os.Stderr, lj)
 		}
 	})
-}
-
-func SysLog(s string) {
-	logHelper(nil, loggerINFO, s)
-}
-
-func SysLogf(format string, a ...any) {
-	logHelper(nil, loggerINFO, fmt.Sprintf(format, a...))
-}
-
-func SysWarn(s string) {
-	logHelper(nil, loggerWarn, s)
-}
-
-func SysWarnf(format string, a ...any) {
-	logHelper(nil, loggerWarn, fmt.Sprintf(format, a...))
-}
-
-func SysError(s string) {
-	logHelper(nil, loggerError, s)
-}
-
-func SysErrorf(format string, a ...any) {
-	logHelper(nil, loggerError, fmt.Sprintf(format, a...))
-}
-
-func Debug(ctx context.Context, msg string) {
-	if !config.DebugEnabled {
-		return
-	}
-	logHelper(ctx, loggerDEBUG, msg)
-}
-
-func Info(ctx context.Context, msg string) {
-	logHelper(ctx, loggerINFO, msg)
-}
-
-func Warn(ctx context.Context, msg string) {
-	logHelper(ctx, loggerWarn, msg)
-}
-
-func Error(ctx context.Context, msg string) {
-	logHelper(ctx, loggerError, msg)
-}
-
-func Debugf(ctx context.Context, format string, a ...any) {
-	if !config.DebugEnabled {
-		return
-	}
-	logHelper(ctx, loggerDEBUG, fmt.Sprintf(format, a...))
-}
-
-func Infof(ctx context.Context, format string, a ...any) {
-	logHelper(ctx, loggerINFO, fmt.Sprintf(format, a...))
-}
-
-func Warnf(ctx context.Context, format string, a ...any) {
-	logHelper(ctx, loggerWarn, fmt.Sprintf(format, a...))
-}
-
-func Errorf(ctx context.Context, format string, a ...any) {
-	logHelper(ctx, loggerError, fmt.Sprintf(format, a...))
-}
-
-func FatalLog(s string) {
-	logHelper(nil, loggerFatal, s)
-}
-
-func FatalLogf(format string, a ...any) {
-	logHelper(nil, loggerFatal, fmt.Sprintf(format, a...))
-}
-
-func logHelper(ctx context.Context, level loggerLevel, msg string) {
-	writer := gin.DefaultErrorWriter
-	if level == loggerINFO {
-		writer = gin.DefaultWriter
-	}
-	var requestId string
-	if ctx != nil {
-		rawRequestId := helper.GetRequestID(ctx)
-		if rawRequestId != "" {
-			requestId = fmt.Sprintf(" | %s", rawRequestId)
-		}
-	}
-	lineInfo, funcName := getLineInfo()
-	now := time.Now()
-	_, _ = fmt.Fprintf(writer, "[%s] %v%s%s %s%s \n", level, now.Format("2006/01/02 - 15:04:05"), requestId, lineInfo, funcName, msg)
-	SetupLogger()
-	if level == loggerFatal {
-		os.Exit(1)
-	}
-}
-
-func getLineInfo() (string, string) {
-	funcName := "[unknown] "
-	pc, file, line, ok := runtime.Caller(3)
-	if ok {
-		if fn := runtime.FuncForPC(pc); fn != nil {
-			parts := strings.Split(fn.Name(), ".")
-			funcName = "[" + parts[len(parts)-1] + "] "
-		}
-	} else {
-		file = "unknown"
-		line = 0
-	}
-	parts := strings.Split(file, "one-api/")
-	if len(parts) > 1 {
-		file = parts[1]
-	}
-	return fmt.Sprintf(" | %s:%d", file, line), funcName
 }

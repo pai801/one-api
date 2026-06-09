@@ -39,21 +39,20 @@ var ModelList = []string{
 
 func DoResponsesResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (*model.Usage, *model.ErrorWithStatusCode) {
 	var textResponse model.ResponsesResponse
-	ctx := c.Request.Context()
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "read_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "read_response_body_failed", err)
 		return nil, ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 	}
 	err = resp.Body.Close()
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "close_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 		return nil, ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError)
 	}
 
 	err = json.Unmarshal(responseBody, &textResponse)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "invalid_json_response", err)
+		logger.Log.Errorf("[%s] %+v", "invalid_json_response", err)
 		return nil, ErrorWrapper(err, "invalid_json_response", http.StatusInternalServerError)
 	}
 
@@ -67,12 +66,12 @@ func DoResponsesResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (
 	c.Writer.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(c.Writer, resp.Body)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "copy_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "copy_response_body_failed", err)
 		return nil, ErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError)
 	}
 	err = resp.Body.Close()
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "close_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 		return nil, ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError)
 	}
 
@@ -160,7 +159,7 @@ func StreamResponsesHandler(c *gin.Context, resp *http.Response) (*model.ErrorWi
 		var streamResponse model.ResponsesStreamEvent
 		err := json.Unmarshal([]byte(payload), &streamResponse)
 		if err != nil {
-			logger.SysError("error unmarshalling stream response: " + err.Error())
+			logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 			render.StringData(c, line)
 			continue
 		}
@@ -203,7 +202,7 @@ func StreamResponsesHandler(c *gin.Context, resp *http.Response) (*model.ErrorWi
 				itemID = streamResponse.Item.CallID
 			}
 			if itemID == "" {
-				logger.SysError("skip output item without id")
+				logger.Log.Errorf("skip output item without id")
 				continue
 			}
 			if !shouldKeepResponsesOutputItem(streamResponse.Item.Type) {
@@ -253,7 +252,7 @@ func StreamResponsesHandler(c *gin.Context, resp *http.Response) (*model.ErrorWi
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.SysError("error reading stream: " + err.Error())
+		logger.Log.Errorf("error reading stream: " + err.Error())
 	}
 
 	if !doneRendered {
@@ -278,7 +277,7 @@ func StreamResponsesHandler(c *gin.Context, resp *http.Response) (*model.ErrorWi
 
 	err := resp.Body.Close()
 	if err != nil {
-		logger.Errorf(c.Request.Context(), "[%s] %+v", "close_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 		return ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError), "", nil
 	}
 

@@ -55,14 +55,13 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
-	ctx := c.Request.Context()
 	splits := strings.Split(meta.APIKey, "|")
 	if len(splits) != 3 {
-		logger.Errorf(ctx, "[%s] %+v", "invalid_auth", errors.New("invalid auth"))
+		logger.Log.Errorf("[%s] %+v", "invalid_auth", errors.New("invalid auth"))
 		return nil, openai.ErrorWrapper(errors.New("invalid auth"), "invalid_auth", http.StatusBadRequest)
 	}
 	if a.request == nil {
-		logger.Errorf(ctx, "[%s] %+v", "request_is_nil", errors.New("request is nil"))
+		logger.Log.Errorf("[%s] %+v", "request_is_nil", errors.New("request is nil"))
 		return nil, openai.ErrorWrapper(errors.New("request is nil"), "request_is_nil", http.StatusBadRequest)
 	}
 	version := parseAPIVersionByModelName(meta.ActualModelName)

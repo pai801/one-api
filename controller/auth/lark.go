@@ -53,7 +53,7 @@ func getLarkUserInfoByCode(code string) (*LarkUser, error) {
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		logger.SysLog(err.Error())
+		logger.Log.Infof(err.Error())
 		return nil, errors.New("无法连接至飞书服务器，请稍后重试！")
 	}
 	defer res.Body.Close()
@@ -69,7 +69,7 @@ func getLarkUserInfoByCode(code string) (*LarkUser, error) {
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", oAuthResponse.AccessToken))
 	res2, err := client.Do(req)
 	if err != nil {
-		logger.SysLog(err.Error())
+		logger.Log.Infof(err.Error())
 		return nil, errors.New("无法连接至飞书服务器，请稍后重试！")
 	}
 	var larkUser LarkUser

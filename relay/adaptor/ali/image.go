@@ -36,7 +36,7 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 	}
 
 	if aliTaskResponse.Message != "" {
-		logger.SysError("aliAsyncTask err: " + string(responseBody))
+		logger.Log.Errorf("aliAsyncTask err: " + string(responseBody))
 		return openai.ErrorWrapper(errors.New(aliTaskResponse.Message), "ali_async_task_failed", http.StatusInternalServerError), nil
 	}
 
@@ -83,7 +83,7 @@ func asyncTask(taskID string, key string) (*TaskResponse, error, []byte) {
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		logger.SysError("aliAsyncTask client.Do err: " + err.Error())
+		logger.Log.Errorf("aliAsyncTask client.Do err: " + err.Error())
 		return &aliResponse, err, nil
 	}
 	defer resp.Body.Close()
@@ -93,7 +93,7 @@ func asyncTask(taskID string, key string) (*TaskResponse, error, []byte) {
 	var response TaskResponse
 	err = json.Unmarshal(responseBody, &response)
 	if err != nil {
-		logger.SysError("aliAsyncTask NewDecoder err: " + err.Error())
+		logger.Log.Errorf("aliAsyncTask NewDecoder err: " + err.Error())
 		return &aliResponse, err, nil
 	}
 
@@ -151,7 +151,7 @@ func responseAli2OpenAIImage(response *TaskResponse, responseFormat string) *ope
 			imageData, err := getImageData(data.Url)
 			if err != nil {
 				// 处理获取图片数据失败的情况
-				logger.SysError("getImageData Error getting image data: " + err.Error())
+				logger.Log.Errorf("getImageData Error getting image data: " + err.Error())
 				continue
 			}
 

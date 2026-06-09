@@ -48,7 +48,7 @@ func CacheGetTokenByKey(key string) (*Token, error) {
 		}
 		err = common.RedisSet(fmt.Sprintf("token:%s", key), string(jsonBytes), time.Duration(TokenCacheSeconds)*time.Second)
 		if err != nil {
-			logger.SysError("Redis set token error: " + err.Error())
+			logger.Log.Errorf("Redis set token error: " + err.Error())
 		}
 		return &token, nil
 	}
@@ -68,7 +68,7 @@ func CacheGetUserGroup(id int) (group string, err error) {
 		}
 		err = common.RedisSet(fmt.Sprintf("user_group:%d", id), group, time.Duration(UserId2GroupCacheSeconds)*time.Second)
 		if err != nil {
-			logger.SysError("Redis set user group error: " + err.Error())
+			logger.Log.Errorf("Redis set user group error: " + err.Error())
 		}
 	}
 	return group, err
@@ -81,7 +81,7 @@ func fetchAndUpdateUserQuota(ctx context.Context, id int) (quota int64, err erro
 	}
 	err = common.RedisSet(fmt.Sprintf("user_quota:%d", id), fmt.Sprintf("%d", quota), time.Duration(UserId2QuotaCacheSeconds)*time.Second)
 	if err != nil {
-		logger.Error(ctx, "Redis set user quota error: "+err.Error())
+		logger.Log.Errorf("Redis set user quota error: "+err.Error())
 	}
 	return
 }
@@ -99,7 +99,7 @@ func CacheGetUserQuota(ctx context.Context, id int) (quota int64, err error) {
 		return 0, nil
 	}
 	if quota <= config.PreConsumedQuota { // when user's quota is less than pre-consumed quota, we need to fetch from db
-		logger.Infof(ctx, "user %d's cached quota is too low: %d, refreshing from db", quota, id)
+		logger.Log.Infof("user %d's cached quota is too low: %d, refreshing from db", quota, id)
 		return fetchAndUpdateUserQuota(ctx, id)
 	}
 	return quota, nil
@@ -144,7 +144,7 @@ func CacheIsUserEnabled(userId int) (bool, error) {
 	}
 	err = common.RedisSet(fmt.Sprintf("user_enabled:%d", userId), enabled, time.Duration(UserId2StatusCacheSeconds)*time.Second)
 	if err != nil {
-		logger.SysError("Redis set user enabled error: " + err.Error())
+		logger.Log.Errorf("Redis set user enabled error: " + err.Error())
 	}
 	return userEnabled, err
 }
@@ -163,7 +163,7 @@ func CacheGetGroupModels(ctx context.Context, group string) ([]string, error) {
 	}
 	err = common.RedisSet(fmt.Sprintf("group_models:%s", group), strings.Join(models, ","), time.Duration(GroupModelsCacheSeconds)*time.Second)
 	if err != nil {
-		logger.SysError("Redis set group models error: " + err.Error())
+		logger.Log.Errorf("Redis set group models error: " + err.Error())
 	}
 	return models, nil
 }
@@ -214,13 +214,13 @@ func InitChannelCache() {
 	channelSyncLock.Lock()
 	group2model2channels = newGroup2model2channels
 	channelSyncLock.Unlock()
-	logger.SysLog("channels synced from database")
+	logger.Log.Infof("channels synced from database")
 }
 
 func SyncChannelCache(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
-		logger.SysLog("syncing channels from database")
+		logger.Log.Infof("syncing channels from database")
 		InitChannelCache()
 	}
 }

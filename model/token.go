@@ -66,7 +66,7 @@ func ValidateUserToken(key string) (token *Token, err error) {
 	}
 	token, err = CacheGetTokenByKey(key)
 	if err != nil {
-		logger.SysError("CacheGetTokenByKey failed: " + err.Error())
+		logger.Log.Errorf("CacheGetTokenByKey failed: " + err.Error())
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("无效的令牌")
 		}
@@ -85,7 +85,7 @@ func ValidateUserToken(key string) (token *Token, err error) {
 			token.Status = TokenStatusExpired
 			err := token.SelectUpdate()
 			if err != nil {
-				logger.SysError("failed to update token status" + err.Error())
+				logger.Log.Errorf("failed to update token status" + err.Error())
 			}
 		}
 		return nil, errors.New("该令牌已过期")
@@ -96,7 +96,7 @@ func ValidateUserToken(key string) (token *Token, err error) {
 			token.Status = TokenStatusExhausted
 			err := token.SelectUpdate()
 			if err != nil {
-				logger.SysError("failed to update token status" + err.Error())
+				logger.Log.Errorf("failed to update token status" + err.Error())
 			}
 		}
 		return nil, errors.New("该令牌额度已用尽")
@@ -255,7 +255,7 @@ func PreConsumeTokenQuota(tokenId int, quota int64) (err error) {
 		go func() {
 			email, err := GetUserEmail(token.UserId)
 			if err != nil {
-				logger.SysError("failed to fetch user email: " + err.Error())
+				logger.Log.Errorf("failed to fetch user email: " + err.Error())
 			}
 			prompt := "额度提醒"
 			var contentText string
@@ -281,7 +281,7 @@ func PreConsumeTokenQuota(tokenId int, quota int64) (err error) {
 				)
 				err = message.SendEmail(prompt, email, content)
 				if err != nil {
-					logger.SysError("failed to send email: " + err.Error())
+					logger.Log.Errorf("failed to send email: " + err.Error())
 				}
 			}
 		}()

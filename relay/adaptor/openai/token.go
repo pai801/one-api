@@ -2,7 +2,6 @@ package openai
 
 import (
 	"errors"
-	"fmt"
 	"math"
 	"strings"
 
@@ -20,20 +19,20 @@ var tokenEncoderMap = map[string]*tiktoken.Tiktoken{}
 var defaultTokenEncoder *tiktoken.Tiktoken
 
 func InitTokenEncoders() {
-	logger.SysLog("initializing token encoders")
+	logger.Log.Infof("initializing token encoders")
 	gpt35TokenEncoder, err := tiktoken.EncodingForModel("gpt-3.5-turbo")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-3.5-turbo token encoder: %s, "+
-			"if you are using in offline environment, please set TIKTOKEN_CACHE_DIR to use exsited files, check this link for more information: https://stackoverflow.com/questions/76106366/how-to-use-tiktoken-in-offline-mode-computer ", err.Error()))
+		logger.Log.Fatalf("failed to get gpt-3.5-turbo token encoder: %s, "+
+			"if you are using in offline environment, please set TIKTOKEN_CACHE_DIR to use exsited files, check this link for more information: https://stackoverflow.com/questions/76106366/how-to-use-tiktoken-in-offline-mode-computer ", err.Error())
 	}
 	defaultTokenEncoder = gpt35TokenEncoder
 	gpt4oTokenEncoder, err := tiktoken.EncodingForModel("gpt-4o")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-4o token encoder: %s", err.Error()))
+		logger.Log.Fatalf("failed to get gpt-4o token encoder: %s", err.Error())
 	}
 	gpt4TokenEncoder, err := tiktoken.EncodingForModel("gpt-4")
 	if err != nil {
-		logger.FatalLog(fmt.Sprintf("failed to get gpt-4 token encoder: %s", err.Error()))
+		logger.Log.Fatalf("failed to get gpt-4 token encoder: %s", err.Error())
 	}
 	for model := range billingratio.ModelRatio {
 		if strings.HasPrefix(model, "gpt-3.5") {
@@ -46,7 +45,7 @@ func InitTokenEncoders() {
 			tokenEncoderMap[model] = nil
 		}
 	}
-	logger.SysLog("token encoders initialized")
+	logger.Log.Infof("token encoders initialized")
 }
 
 func getTokenEncoder(model string) *tiktoken.Tiktoken {
@@ -57,7 +56,7 @@ func getTokenEncoder(model string) *tiktoken.Tiktoken {
 	if ok {
 		tokenEncoder, err := tiktoken.EncodingForModel(model)
 		if err != nil {
-			logger.SysError(fmt.Sprintf("failed to get token encoder for model %s: %s, using encoder for gpt-3.5-turbo", model, err.Error()))
+			logger.Log.Errorf("failed to get token encoder for model %s: %s, using encoder for gpt-3.5-turbo", model, err.Error())
 			tokenEncoder = defaultTokenEncoder
 		}
 		tokenEncoderMap[model] = tokenEncoder
@@ -115,7 +114,7 @@ func CountTokenMessages(messages []model.Message, model string) int {
 						}
 						imageTokens, err := countImageTokens(url, detail, model)
 						if err != nil {
-							logger.SysError("error counting image tokens: " + err.Error())
+							logger.Log.Errorf("error counting image tokens: " + err.Error())
 						} else {
 							tokenNum += imageTokens
 						}

@@ -652,7 +652,7 @@ func AddNewMissingRatio(oldRatio string) string {
 	newRatio := make(map[string]float64)
 	err := json.Unmarshal([]byte(oldRatio), &newRatio)
 	if err != nil {
-		logger.SysError("error unmarshalling old ratio: " + err.Error())
+		logger.Log.Errorf("error unmarshalling old ratio: " + err.Error())
 		return oldRatio
 	}
 	for k, v := range DefaultModelRatio {
@@ -662,7 +662,7 @@ func AddNewMissingRatio(oldRatio string) string {
 	}
 	jsonBytes, err := json.Marshal(newRatio)
 	if err != nil {
-		logger.SysError("error marshalling new ratio: " + err.Error())
+		logger.Log.Errorf("error marshalling new ratio: " + err.Error())
 		return oldRatio
 	}
 	return string(jsonBytes)
@@ -671,7 +671,7 @@ func AddNewMissingRatio(oldRatio string) string {
 func ModelRatio2JSONString() string {
 	jsonBytes, err := json.Marshal(ModelRatio)
 	if err != nil {
-		logger.SysError("error marshalling model ratio: " + err.Error())
+		logger.Log.Errorf("error marshalling model ratio: " + err.Error())
 	}
 	return string(jsonBytes)
 }
@@ -712,7 +712,7 @@ func GetModelRatio(name string, channelType int) float64 {
 func CompletionRatio2JSONString() string {
 	jsonBytes, err := json.Marshal(CompletionRatio)
 	if err != nil {
-		logger.SysError("error marshalling completion ratio: " + err.Error())
+		logger.Log.Errorf("error marshalling completion ratio: " + err.Error())
 	}
 	return string(jsonBytes)
 }

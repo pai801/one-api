@@ -42,10 +42,9 @@ import (
 var errNextLoop = errors.New("next_loop")
 
 func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {
-	ctx := c.Request.Context()
 	if resp.StatusCode != http.StatusCreated {
 		payload, _ := io.ReadAll(resp.Body)
-		logger.Errorf(ctx, "[%s] %+v", "bad_status_code", errors.Errorf("bad_status_code [%d]%s", resp.StatusCode, string(payload)))
+		logger.Log.Errorf("[%s] %+v", "bad_status_code", errors.Errorf("bad_status_code [%d]%s", resp.StatusCode, string(payload)))
 		return openai.ErrorWrapper(
 				errors.Errorf("bad_status_code [%d]%s", resp.StatusCode, string(payload)),
 				"bad_status_code", http.StatusInternalServerError),
@@ -54,13 +53,13 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "read_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "read_response_body_failed", err)
 		return openai.ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError), nil
 	}
 
 	respData := new(ImageResponse)
 	if err = json.Unmarshal(respBody, respData); err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "unmarshal_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "unmarshal_response_body_failed", err)
 		return openai.ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError), nil
 	}
 
@@ -168,7 +167,7 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 					return errors.WithStack(err)
 				}
 
-				logger.Error(c, fmt.Sprintf("some images failed to download: %+v", err))
+				logger.Log.Errorf("some images failed to download: %+v", err)
 			}
 
 			c.JSON(http.StatusOK, respBody)
@@ -179,7 +178,7 @@ func ImageHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCo
 				continue
 			}
 
-			logger.Errorf(ctx, "[%s] %+v", "image_task_failed", err)
+			logger.Log.Errorf("[%s] %+v", "image_task_failed", err)
 			return openai.ErrorWrapper(err, "image_task_failed", http.StatusInternalServerError), nil
 		}
 

@@ -154,11 +154,10 @@ func buildXunfeiAuthUrl(hostUrl string, apiKey, apiSecret string) string {
 }
 
 func StreamHandler(c *gin.Context, meta *meta.Meta, textRequest model.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*model.ErrorWithStatusCode, *model.Usage) {
-	ctx := c.Request.Context()
 	domain, authUrl := getXunfeiAuthUrl(meta.Config.APIVersion, apiKey, apiSecret)
 	dataChan, stopChan, err := xunfeiMakeRequest(textRequest, domain, authUrl, appId)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "xunfei_request_failed", err)
+		logger.Log.Errorf("[%s] %+v", "xunfei_request_failed", err)
 		return openai.ErrorWrapper(err, "xunfei_request_failed", http.StatusInternalServerError), nil
 	}
 	common.SetEventStreamHeaders(c)
@@ -172,7 +171,7 @@ func StreamHandler(c *gin.Context, meta *meta.Meta, textRequest model.GeneralOpe
 			response := streamResponseXunfei2OpenAI(&xunfeiResponse)
 			jsonResponse, err := json.Marshal(response)
 			if err != nil {
-				logger.SysError("error marshalling stream response: " + err.Error())
+				logger.Log.Errorf("error marshalling stream response: " + err.Error())
 				return true
 			}
 			c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonResponse)})
@@ -186,11 +185,10 @@ func StreamHandler(c *gin.Context, meta *meta.Meta, textRequest model.GeneralOpe
 }
 
 func Handler(c *gin.Context, meta *meta.Meta, textRequest model.GeneralOpenAIRequest, appId string, apiSecret string, apiKey string) (*model.ErrorWithStatusCode, *model.Usage) {
-	ctx := c.Request.Context()
 	domain, authUrl := getXunfeiAuthUrl(meta.Config.APIVersion, apiKey, apiSecret)
 	dataChan, stopChan, err := xunfeiMakeRequest(textRequest, domain, authUrl, appId)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "xunfei_request_failed", err)
+		logger.Log.Errorf("[%s] %+v", "xunfei_request_failed", err)
 		return openai.ErrorWrapper(err, "xunfei_request_failed", http.StatusInternalServerError), nil
 	}
 	var usage model.Usage
@@ -211,7 +209,7 @@ func Handler(c *gin.Context, meta *meta.Meta, textRequest model.GeneralOpenAIReq
 		}
 	}
 	if len(xunfeiResponse.Payload.Choices.Text) == 0 {
-		logger.Errorf(ctx, "[%s] %+v", "xunfei_empty_response_detected", errors.New("xunfei empty response detected"))
+		logger.Log.Errorf("[%s] %+v", "xunfei_empty_response_detected", errors.New("xunfei empty response detected"))
 		return openai.ErrorWrapper(errors.New("xunfei empty response detected"), "xunfei_empty_response_detected", http.StatusInternalServerError), nil
 	}
 	xunfeiResponse.Payload.Choices.Text[0].Content = content
@@ -219,7 +217,7 @@ func Handler(c *gin.Context, meta *meta.Meta, textRequest model.GeneralOpenAIReq
 	response := responseXunfei2OpenAI(&xunfeiResponse)
 	jsonResponse, err := json.Marshal(response)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "marshal_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "marshal_response_body_failed", err)
 		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError), nil
 	}
 	c.Writer.Header().Set("Content-Type", "application/json")
@@ -252,14 +250,14 @@ func xunfeiMakeRequest(textRequest model.GeneralOpenAIRequest, domain, authUrl, 
 			if msg == nil {
 				_, msg, err = conn.ReadMessage()
 				if err != nil {
-					logger.SysError("error reading stream response: " + err.Error())
+					logger.Log.Errorf("error reading stream response: " + err.Error())
 					break
 				}
 			}
 			var response ChatResponse
 			err = json.Unmarshal(msg, &response)
 			if err != nil {
-				logger.SysError("error unmarshalling stream response: " + err.Error())
+				logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 				break
 			}
 			msg = nil
@@ -267,7 +265,7 @@ func xunfeiMakeRequest(textRequest model.GeneralOpenAIRequest, domain, authUrl, 
 			if response.Payload.Choices.Status == 2 {
 				err := conn.Close()
 				if err != nil {
-					logger.SysError("error closing websocket connection: " + err.Error())
+					logger.Log.Errorf("error closing websocket connection: " + err.Error())
 				}
 				break
 			}

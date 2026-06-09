@@ -13,7 +13,7 @@ func notifyRootUser(subject string, content string) {
 	if config.MessagePusherAddress != "" {
 		err := message.SendMessage(subject, content, content)
 		if err != nil {
-			logger.SysError(fmt.Sprintf("failed to send message: %s", err.Error()))
+			logger.Log.Errorf("failed to send message: %s", err.Error())
 		} else {
 			return
 		}
@@ -23,14 +23,14 @@ func notifyRootUser(subject string, content string) {
 	}
 	err := message.SendEmail(subject, config.RootUserEmail, content)
 	if err != nil {
-		logger.SysError(fmt.Sprintf("failed to send email: %s", err.Error()))
+		logger.Log.Errorf("failed to send email: %s", err.Error())
 	}
 }
 
 // DisableChannel disable & notify
 func DisableChannel(channelId int, channelName string, reason string) {
 	model.UpdateChannelStatusById(channelId, model.ChannelStatusAutoDisabled)
-	logger.SysLog(fmt.Sprintf("channel #%d has been disabled: %s", channelId, reason))
+	logger.Log.Infof("channel #%d (%s) has been disabled by rule match: %s", channelId, channelName, reason)
 	subject := fmt.Sprintf("渠道状态变更提醒")
 	content := message.EmailTemplate(
 		subject,
@@ -46,7 +46,7 @@ func DisableChannel(channelId int, channelName string, reason string) {
 
 func MetricDisableChannel(channelId int, successRate float64) {
 	model.UpdateChannelStatusById(channelId, model.ChannelStatusAutoDisabled)
-	logger.SysLog(fmt.Sprintf("channel #%d has been disabled due to low success rate: %.2f", channelId, successRate*100))
+	logger.Log.Infof("channel #%d has been disabled due to low success rate: %.2f", channelId, successRate*100)
 	subject := fmt.Sprintf("渠道状态变更提醒")
 	content := message.EmailTemplate(
 		subject,
@@ -63,7 +63,7 @@ func MetricDisableChannel(channelId int, successRate float64) {
 // EnableChannel enable & notify
 func EnableChannel(channelId int, channelName string) {
 	model.UpdateChannelStatusById(channelId, model.ChannelStatusEnabled)
-	logger.SysLog(fmt.Sprintf("channel #%d has been enabled", channelId))
+	logger.Log.Infof("channel #%d has been enabled", channelId)
 	subject := fmt.Sprintf("渠道状态变更提醒")
 	content := message.EmailTemplate(
 		subject,

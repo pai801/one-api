@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/relay/model"
 )
 
@@ -16,13 +17,16 @@ func ShouldDisableChannel(err *model.Error, statusCode int) bool {
 		return false
 	}
 	if statusCode == http.StatusUnauthorized {
+		logger.Log.Debugf("ShouldDisableChannel: status=%d matches rule: unauthorized", statusCode)
 		return true
 	}
 	switch err.Type {
 	case "insufficient_quota", "authentication_error", "permission_error", "forbidden":
+		logger.Log.Debugf("ShouldDisableChannel: type=%q matches rule: error_type", err.Type)
 		return true
 	}
 	if err.Code == "invalid_api_key" || err.Code == "account_deactivated" {
+		logger.Log.Debugf("ShouldDisableChannel: code=%v matches rule: error_code", err.Code)
 		return true
 	}
 
@@ -38,6 +42,7 @@ func ShouldDisableChannel(err *model.Error, statusCode int) bool {
 		strings.Contains(lowerMessage, "api key not valid") || // gemini
 		strings.Contains(lowerMessage, "api key expired") || // gemini
 		strings.Contains(lowerMessage, "已欠费") {
+		logger.Log.Debugf("ShouldDisableChannel: message contains disable keyword: matches rule: message_keyword")
 		return true
 	}
 	return false

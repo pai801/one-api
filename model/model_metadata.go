@@ -43,7 +43,7 @@ func InitModelMetadataMap() {
 
 	var metadataList []*ModelMetadata
 	if err := DB.Find(&metadataList).Error; err != nil {
-		logger.SysError("failed to load model metadata: " + err.Error())
+		logger.Log.Errorf("failed to load model metadata: " + err.Error())
 		return
 	}
 
@@ -131,7 +131,7 @@ func RefreshModelMetadataMap() {
 
 	var metadataList []*ModelMetadata
 	if err := DB.Find(&metadataList).Error; err != nil {
-		logger.SysError("failed to refresh model metadata: " + err.Error())
+		logger.Log.Errorf("failed to refresh model metadata: " + err.Error())
 		return
 	}
 

@@ -2,7 +2,6 @@ package main
 
 import (
 	"embed"
-	"fmt"
 	"os"
 	"strconv"
 
@@ -29,13 +28,13 @@ var buildFS embed.FS
 func main() {
 	common.Init()
 	logger.SetupLogger()
-	logger.SysLogf("One API %s started", common.Version)
+	logger.Log.Infof("One API %s started", common.Version)
 
 	if os.Getenv("GIN_MODE") != gin.DebugMode {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	if config.DebugEnabled {
-		logger.SysLog("running in debug mode")
+		logger.Log.Infof("running in debug mode")
 	}
 
 	// Initialize SQL Database
@@ -45,31 +44,31 @@ func main() {
 	var err error
 	err = model.CreateRootAccountIfNeed()
 	if err != nil {
-		logger.FatalLog("database init error: " + err.Error())
+		logger.Log.Fatalf("database init error: " + err.Error())
 	}
 	defer func() {
 		err := model.CloseDB()
 		if err != nil {
-			logger.FatalLog("failed to close database: " + err.Error())
+			logger.Log.Fatalf("failed to close database: " + err.Error())
 		}
 	}()
 
 	// Initialize Redis
 	err = common.InitRedisClient()
 	if err != nil {
-		logger.FatalLog("failed to initialize Redis: " + err.Error())
+		logger.Log.Fatalf("failed to initialize Redis: " + err.Error())
 	}
 
 	// Initialize options
 	model.InitOptionMap()
-	logger.SysLog(fmt.Sprintf("using theme %s", config.Theme))
+	logger.Log.Infof("using theme %s", config.Theme)
 	if common.RedisEnabled {
 		// for compatibility with old versions
 		config.MemoryCacheEnabled = true
 	}
 	if config.MemoryCacheEnabled {
-		logger.SysLog("memory cache enabled")
-		logger.SysLog(fmt.Sprintf("sync frequency: %d seconds", config.SyncFrequency))
+		logger.Log.Infof("memory cache enabled")
+		logger.Log.Infof("sync frequency: %d seconds", config.SyncFrequency)
 		model.InitChannelCache()
 	}
 	if config.MemoryCacheEnabled {
@@ -79,24 +78,24 @@ func main() {
 	if os.Getenv("CHANNEL_TEST_FREQUENCY") != "" {
 		frequency, err := strconv.Atoi(os.Getenv("CHANNEL_TEST_FREQUENCY"))
 		if err != nil {
-			logger.FatalLog("failed to parse CHANNEL_TEST_FREQUENCY: " + err.Error())
+			logger.Log.Fatalf("failed to parse CHANNEL_TEST_FREQUENCY: " + err.Error())
 		}
 		go controller.AutomaticallyTestChannels(frequency)
 	}
 	if os.Getenv("BATCH_UPDATE_ENABLED") == "true" {
 		config.BatchUpdateEnabled = true
-		logger.SysLog("batch update enabled with interval " + strconv.Itoa(config.BatchUpdateInterval) + "s")
+		logger.Log.Infof("batch update enabled with interval " + strconv.Itoa(config.BatchUpdateInterval) + "s")
 		model.InitBatchUpdater()
 	}
 	if config.EnableMetric {
-		logger.SysLog("metric enabled, will disable channel if too much request failed")
+		logger.Log.Infof("metric enabled, will disable channel if too much request failed")
 	}
 	openai.InitTokenEncoders()
 	client.Init()
 
 	// Initialize i18n
 	if err := i18n.Init(); err != nil {
-		logger.FatalLog("failed to initialize i18n: " + err.Error())
+		logger.Log.Fatalf("failed to initialize i18n: " + err.Error())
 	}
 
 	// Initialize HTTP server
@@ -116,9 +115,9 @@ func main() {
 	if port == "" {
 		port = strconv.Itoa(*common.Port)
 	}
-	logger.SysLogf("server started on http://localhost:%s", port)
+	logger.Log.Infof("server started on http://localhost:%s", port)
 	err = server.Run(":" + port)
 	if err != nil {
-		logger.FatalLog("failed to start HTTP server: " + err.Error())
+		logger.Log.Fatalf("failed to start HTTP server: " + err.Error())
 	}
 }

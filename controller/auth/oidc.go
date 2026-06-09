@@ -61,7 +61,7 @@ func getOidcUserInfoByCode(code string) (*OidcUser, error) {
 	}
 	res, err := client.Do(req)
 	if err != nil {
-		logger.SysLog(err.Error())
+		logger.Log.Infof(err.Error())
 		return nil, errors.New("无法连接至 OIDC 服务器，请稍后重试！")
 	}
 	defer res.Body.Close()
@@ -77,7 +77,7 @@ func getOidcUserInfoByCode(code string) (*OidcUser, error) {
 	req.Header.Set("Authorization", "Bearer "+oidcResponse.AccessToken)
 	res2, err := client.Do(req)
 	if err != nil {
-		logger.SysLog(err.Error())
+		logger.Log.Infof(err.Error())
 		return nil, errors.New("无法连接至 OIDC 服务器，请稍后重试！")
 	}
 	var oidcUser OidcUser

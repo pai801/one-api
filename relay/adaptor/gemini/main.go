@@ -224,7 +224,7 @@ func getToolCalls(candidate *ChatCandidate) []model.Tool {
 	}
 	argsBytes, err := json.Marshal(item.FunctionCall.Arguments)
 	if err != nil {
-		logger.FatalLog("getToolCalls failed: " + err.Error())
+		logger.Log.Fatalf("getToolCalls failed: " + err.Error())
 		return toolCalls
 	}
 	toolCall := model.Tool{
@@ -325,7 +325,7 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 		var geminiResponse ChatResponse
 		err := json.Unmarshal([]byte(data), &geminiResponse)
 		if err != nil {
-			logger.SysError("error unmarshalling stream response: " + err.Error())
+			logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 			continue
 		}
 
@@ -338,12 +338,12 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 
 		err = render.ObjectData(c, response)
 		if err != nil {
-			logger.SysError(err.Error())
+			logger.Log.Errorf(err.Error())
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.SysError("error reading stream: " + err.Error())
+		logger.Log.Errorf("error reading stream: " + err.Error())
 	}
 
 	render.Done(c)

@@ -14,7 +14,7 @@ func ReturnPreConsumedQuota(ctx context.Context, preConsumedQuota int64, tokenId
 			// return pre-consumed quota
 			err := model.PostConsumeTokenQuota(tokenId, -preConsumedQuota)
 			if err != nil {
-				logger.Error(ctx, "error return pre-consumed quota: "+err.Error())
+				logger.Log.Errorf("error return pre-consumed quota: "+err.Error())
 			}
 		}(ctx)
 	}
@@ -24,11 +24,11 @@ func PostConsumeQuota(ctx context.Context, tokenId int, quotaDelta int64, totalQ
 	// quotaDelta is remaining quota to be consumed
 	err := model.PostConsumeTokenQuota(tokenId, quotaDelta)
 	if err != nil {
-		logger.SysError("error consuming token remain quota: " + err.Error())
+		logger.Log.Errorf("error consuming token remain quota: " + err.Error())
 	}
 	err = model.CacheUpdateUserQuota(ctx, userId)
 	if err != nil {
-		logger.SysError("error update user quota cache: " + err.Error())
+		logger.Log.Errorf("error update user quota cache: " + err.Error())
 	}
 	// totalQuota is total quota consumed
 	if totalQuota != 0 {
@@ -47,6 +47,6 @@ func PostConsumeQuota(ctx context.Context, tokenId int, quotaDelta int64, totalQ
 		model.UpdateChannelUsedQuota(channelId, totalQuota)
 	}
 	if totalQuota <= 0 {
-		logger.Error(ctx, fmt.Sprintf("totalQuota consumed is %d, something is wrong", totalQuota))
+		logger.Log.Errorf("totalQuota consumed is %d, something is wrong", totalQuota)
 	}
 }

@@ -110,19 +110,18 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *me
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Reader) (*http.Response, error) {
-	logger.Info(c, "send request to replicate")
+	logger.Log.Infof("send request to replicate")
 	return adaptor.DoRequestHelper(a, c, meta, requestBody)
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
-	ctx := c.Request.Context()
 	switch meta.Mode {
 	case relaymode.ImagesGenerations:
 		err, usage = ImageHandler(c, resp)
 	case relaymode.ChatCompletions:
 		err, usage = ChatHandler(c, resp)
 	default:
-		logger.Errorf(ctx, "[%s] %+v", "not_implemented", errors.New("not implemented"))
+		logger.Log.Errorf("[%s] %+v", "not_implemented", errors.New("not implemented"))
 		err = openai.ErrorWrapper(errors.New("not implemented"), "not_implemented", http.StatusInternalServerError)
 	}
 

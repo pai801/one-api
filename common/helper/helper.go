@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"html/template"
-	"log"
 	"net"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -28,14 +28,14 @@ func OpenBrowser(url string) {
 		err = exec.Command("open", url).Start()
 	}
 	if err != nil {
-		log.Println(err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 	}
 }
 
 func GetIp() (ip string) {
 	ips, err := net.InterfaceAddrs()
 	if err != nil {
-		log.Println(err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		return ip
 	}
 

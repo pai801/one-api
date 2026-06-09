@@ -2,7 +2,6 @@ package model
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 	"unicode"
 
@@ -160,7 +159,7 @@ func (channel *Channel) GetModelMapping() map[string]string {
 	modelMapping := make(map[string]string)
 	err := json.Unmarshal([]byte(*channel.ModelMapping), &modelMapping)
 	if err != nil {
-		logger.SysError(fmt.Sprintf("failed to unmarshal model mapping for channel %d, error: %s", channel.Id, err.Error()))
+		logger.Log.Errorf("failed to unmarshal model mapping for channel %d, error: %s", channel.Id, err.Error())
 		return nil
 	}
 	return modelMapping
@@ -216,7 +215,7 @@ func (channel *Channel) UpdateResponseTime(responseTime int64) {
 		ResponseTime: int(responseTime),
 	}).Error
 	if err != nil {
-		logger.SysError("failed to update response time: " + err.Error())
+		logger.Log.Errorf("failed to update response time: " + err.Error())
 	}
 }
 
@@ -226,7 +225,7 @@ func (channel *Channel) UpdateBalance(balance float64) {
 		Balance:            balance,
 	}).Error
 	if err != nil {
-		logger.SysError("failed to update balance: " + err.Error())
+		logger.Log.Errorf("failed to update balance: " + err.Error())
 	}
 }
 
@@ -255,11 +254,11 @@ func (channel *Channel) LoadConfig() (ChannelConfig, error) {
 func UpdateChannelStatusById(id int, status int) {
 	err := UpdateAbilityStatus(id, status == ChannelStatusEnabled)
 	if err != nil {
-		logger.SysError("failed to update ability status: " + err.Error())
+		logger.Log.Errorf("failed to update ability status: " + err.Error())
 	}
 	err = DB.Model(&Channel{}).Where("id = ?", id).Update("status", status).Error
 	if err != nil {
-		logger.SysError("failed to update channel status: " + err.Error())
+		logger.Log.Errorf("failed to update channel status: " + err.Error())
 	}
 	if config.MemoryCacheEnabled {
 		InitChannelCache()
@@ -277,7 +276,7 @@ func UpdateChannelUsedQuota(id int, quota int64) {
 func updateChannelUsedQuota(id int, quota int64) {
 	err := DB.Model(&Channel{}).Where("id = ?", id).Update("used_quota", gorm.Expr("used_quota + ?", quota)).Error
 	if err != nil {
-		logger.SysError("failed to update channel used quota: " + err.Error())
+		logger.Log.Errorf("failed to update channel used quota: " + err.Error())
 	}
 }
 

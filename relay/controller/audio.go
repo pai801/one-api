@@ -45,13 +45,13 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		err := common.UnmarshalBodyReusable(c, &ttsRequest)
 		// Check if JSON is valid
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "invalid_json", err)
+			logger.Log.Errorf("[%s] %+v", "invalid_json", err)
 			return openai.ErrorWrapper(err, "invalid_json", http.StatusBadRequest)
 		}
 		audioModel = ttsRequest.Model
 		// Check if text is too long 4096
 		if len(ttsRequest.Input) > 4096 {
-			logger.Errorf(ctx, "[%s] %+v", "text_too_long", errors.New("input is too long (over 4096 characters)"))
+			logger.Log.Errorf("[%s] %+v", "text_too_long", errors.New("input is too long (over 4096 characters)"))
 			return openai.ErrorWrapper(errors.New("input is too long (over 4096 characters)"), "text_too_long", http.StatusBadRequest)
 		}
 	}
@@ -70,18 +70,18 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	}
 	userQuota, err := model.CacheGetUserQuota(ctx, userId)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "get_user_quota_failed", err)
+		logger.Log.Errorf("[%s] %+v", "get_user_quota_failed", err)
 		return openai.ErrorWrapper(err, "get_user_quota_failed", http.StatusInternalServerError)
 	}
 
 	// Check if user quota is enough
 	if userQuota-preConsumedQuota < 0 {
-		logger.Errorf(ctx, "[%s] %+v", "insufficient_user_quota", errors.New("user quota is not enough"))
+		logger.Log.Errorf("[%s] %+v", "insufficient_user_quota", errors.New("user quota is not enough"))
 		return openai.ErrorWrapper(errors.New("user quota is not enough"), "insufficient_user_quota", http.StatusForbidden)
 	}
 	err = model.CacheDecreaseUserQuota(userId, preConsumedQuota)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "decrease_user_quota_failed", err)
+		logger.Log.Errorf("[%s] %+v", "decrease_user_quota_failed", err)
 		return openai.ErrorWrapper(err, "decrease_user_quota_failed", http.StatusInternalServerError)
 	}
 	if userQuota > 100*preConsumedQuota {
@@ -92,7 +92,7 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	if preConsumedQuota > 0 {
 		err := model.PreConsumeTokenQuota(tokenId, preConsumedQuota)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "pre_consume_token_quota_failed", err)
+			logger.Log.Errorf("[%s] %+v", "pre_consume_token_quota_failed", err)
 			return openai.ErrorWrapper(err, "pre_consume_token_quota_failed", http.StatusForbidden)
 		}
 	}
@@ -108,7 +108,7 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 					// negative means add quota back for token & user
 					err := model.PostConsumeTokenQuota(tokenId, -preConsumedQuota)
 					if err != nil {
-						logger.Error(ctx, fmt.Sprintf("error rollback pre-consumed quota: %s", err.Error()))
+						logger.Log.Errorf("error rollback pre-consumed quota: %s", err.Error())
 					}
 				}()
 			}(c.Request.Context())
@@ -142,7 +142,7 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 	requestBody := &bytes.Buffer{}
 	_, err = io.Copy(requestBody, c.Request.Body)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "new_request_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "new_request_body_failed", err)
 		return openai.ErrorWrapper(err, "new_request_body_failed", http.StatusInternalServerError)
 	}
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(requestBody.Bytes()))
@@ -150,7 +150,7 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 	req, err := http.NewRequest(c.Request.Method, fullRequestURL, requestBody)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "new_request_failed", err)
+		logger.Log.Errorf("[%s] %+v", "new_request_failed", err)
 		return openai.ErrorWrapper(err, "new_request_failed", http.StatusInternalServerError)
 	}
 
@@ -168,37 +168,37 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 	resp, err := client.HTTPClient.Do(req)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "do_request_failed", err)
+		logger.Log.Errorf("[%s] %+v", "do_request_failed", err)
 		return openai.ErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
 
 	err = req.Body.Close()
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "close_request_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_request_body_failed", err)
 		return openai.ErrorWrapper(err, "close_request_body_failed", http.StatusInternalServerError)
 	}
 	err = c.Request.Body.Close()
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "close_request_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_request_body_failed", err)
 		return openai.ErrorWrapper(err, "close_request_body_failed", http.StatusInternalServerError)
 	}
 
 	if relayMode != relaymode.AudioSpeech {
 		responseBody, err := io.ReadAll(resp.Body)
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "read_response_body_failed", err)
+			logger.Log.Errorf("[%s] %+v", "read_response_body_failed", err)
 			return openai.ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError)
 		}
 		err = resp.Body.Close()
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "close_response_body_failed", err)
+			logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 			return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError)
 		}
 
 		var openAIErr openai.SlimTextResponse
 		if err = json.Unmarshal(responseBody, &openAIErr); err == nil {
 			if openAIErr.Error.Message != "" {
-				logger.Errorf(ctx, "[%s] %+v", "request_error", fmt.Errorf("type %s, code %v, message %s", openAIErr.Error.Type, openAIErr.Error.Code, openAIErr.Error.Message))
+				logger.Log.Errorf("[%s] %+v", "request_error", fmt.Errorf("type %s, code %v, message %s", openAIErr.Error.Type, openAIErr.Error.Code, openAIErr.Error.Message))
 				return openai.ErrorWrapper(fmt.Errorf("type %s, code %v, message %s", openAIErr.Error.Type, openAIErr.Error.Code, openAIErr.Error.Message), "request_error", http.StatusInternalServerError)
 			}
 		}
@@ -216,11 +216,11 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 		case "vtt":
 			text, err = getTextFromVTT(responseBody)
 		default:
-			logger.Errorf(ctx, "[%s] %+v", "unexpected_response_format", errors.New("unexpected_response_format"))
+			logger.Log.Errorf("[%s] %+v", "unexpected_response_format", errors.New("unexpected_response_format"))
 			return openai.ErrorWrapper(errors.New("unexpected_response_format"), "unexpected_response_format", http.StatusInternalServerError)
 		}
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "get_text_from_body_err", err)
+			logger.Log.Errorf("[%s] %+v", "get_text_from_body_err", err)
 			return openai.ErrorWrapper(err, "get_text_from_body_err", http.StatusInternalServerError)
 		}
 		quota = int64(openai.CountTokenText(text, audioModel))
@@ -242,12 +242,12 @@ func RelayAudioHelper(c *gin.Context, relayMode int) *relaymodel.ErrorWithStatus
 
 	_, err = io.Copy(c.Writer, resp.Body)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "copy_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "copy_response_body_failed", err)
 		return openai.ErrorWrapper(err, "copy_response_body_failed", http.StatusInternalServerError)
 	}
 	err = resp.Body.Close()
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "close_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 		return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError)
 	}
 	return nil

@@ -20,10 +20,9 @@ import (
 
 func ChatHandler(c *gin.Context, resp *http.Response) (
 	srvErr *model.ErrorWithStatusCode, usage *model.Usage) {
-	ctx := c.Request.Context()
 	if resp.StatusCode != http.StatusCreated {
 		payload, _ := io.ReadAll(resp.Body)
-		logger.Errorf(ctx, "[%s] %+v", "bad_status_code", errors.Errorf("bad_status_code [%d]%s", resp.StatusCode, string(payload)))
+		logger.Log.Errorf("[%s] %+v", "bad_status_code", errors.Errorf("bad_status_code [%d]%s", resp.StatusCode, string(payload)))
 		return openai.ErrorWrapper(
 				errors.Errorf("bad_status_code [%d]%s", resp.StatusCode, string(payload)),
 				"bad_status_code", http.StatusInternalServerError),
@@ -32,13 +31,13 @@ func ChatHandler(c *gin.Context, resp *http.Response) (
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "read_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "read_response_body_failed", err)
 		return openai.ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError), nil
 	}
 
 	respData := new(ChatResponse)
 	if err = json.Unmarshal(respBody, respData); err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "unmarshal_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "unmarshal_response_body_failed", err)
 		return openai.ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError), nil
 	}
 
@@ -103,7 +102,7 @@ func ChatHandler(c *gin.Context, resp *http.Response) (
 				continue
 			}
 
-			logger.Errorf(ctx, "[%s] %+v", "chat_task_failed", err)
+			logger.Log.Errorf("[%s] %+v", "chat_task_failed", err)
 			return openai.ErrorWrapper(err, "chat_task_failed", http.StatusInternalServerError), nil
 		}
 

@@ -52,7 +52,7 @@ func StreamHandler(c *gin.Context, resp *http.Response, promptTokens int, modelN
 		var response openai.ChatCompletionsStreamResponse
 		err := json.Unmarshal([]byte(data), &response)
 		if err != nil {
-			logger.SysError("error unmarshalling stream response: " + err.Error())
+			logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 			continue
 		}
 		for _, v := range response.Choices {
@@ -63,12 +63,12 @@ func StreamHandler(c *gin.Context, resp *http.Response, promptTokens int, modelN
 		response.Model = modelName
 		err = render.ObjectData(c, response)
 		if err != nil {
-			logger.SysError(err.Error())
+			logger.Log.Errorf(err.Error())
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.SysError("error reading stream: " + err.Error())
+		logger.Log.Errorf("error reading stream: " + err.Error())
 	}
 
 	render.Done(c)

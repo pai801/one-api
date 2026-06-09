@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"strings"
 
 	_ "github.com/joho/godotenv/autoload"
@@ -20,13 +19,13 @@ func main() {
 	defer func() {
 		err := model.CloseDB()
 		if err != nil {
-			log.Fatalf("failed to close database: %v", err)
+			logger.Log.Fatalf("failed to close database: %v", err)
 		}
 	}()
 
 	channels, err := model.GetAllChannels(0, -1, "all")
 	if err != nil {
-		log.Fatalf("failed to query channels: %v", err)
+		logger.Log.Fatalf("failed to query channels: %v", err)
 	}
 
 	var updated int
@@ -51,7 +50,7 @@ func main() {
 
 		alias := strings.Join(simplified, ",")
 		if err := model.DB.Model(ch).Update("models_alias", alias).Error; err != nil {
-			log.Printf("failed to update channel %d: %v", ch.Id, err)
+			logger.Log.Infof("failed to update channel %d: %v", ch.Id, err)
 			continue
 		}
 		updated++

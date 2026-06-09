@@ -52,7 +52,7 @@ func StreamHandler(c *gin.Context, resp *http.Response, relayMode int) (*model.E
 			var streamResponse ChatCompletionsStreamResponse
 			err := json.Unmarshal([]byte(data[dataPrefixLength:]), &streamResponse)
 			if err != nil {
-				logger.SysError("error unmarshalling stream response: " + err.Error())
+				logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 				render.StringData(c, data) // if error happened, pass the data to client
 				continue                   // just ignore the error
 			}
@@ -72,7 +72,7 @@ func StreamHandler(c *gin.Context, resp *http.Response, relayMode int) (*model.E
 			var streamResponse CompletionsStreamResponse
 			err := json.Unmarshal([]byte(data[dataPrefixLength:]), &streamResponse)
 			if err != nil {
-				logger.SysError("error unmarshalling stream response: " + err.Error())
+				logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 				continue
 			}
 			for _, choice := range streamResponse.Choices {
@@ -82,7 +82,7 @@ func StreamHandler(c *gin.Context, resp *http.Response, relayMode int) (*model.E
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.SysError("error reading stream: " + err.Error())
+		logger.Log.Errorf("error reading stream: " + err.Error())
 	}
 
 	if !doneRendered {
@@ -130,7 +130,7 @@ func buildStreamResponseBody(responseText string, usage *model.Usage, modelName 
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		logger.SysError("buildStreamResponseBody marshal failed: " + err.Error())
+		logger.Log.Errorf("buildStreamResponseBody marshal failed: " + err.Error())
 		return ""
 	}
 	return string(data)

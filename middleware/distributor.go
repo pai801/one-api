@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -52,11 +54,8 @@ func matchChannelsByAlias(requestModel string, channels []*model.Channel) ([]*mo
 	// First pass: exact match
 	var exactMatches []*model.Channel
 	for _, ch := range channels {
-		for _, a := range ch.GetAlias() {
-			if a == alias {
-				exactMatches = append(exactMatches, ch)
-				break
-			}
+		if slices.Contains(ch.GetAlias(), alias) {
+			exactMatches = append(exactMatches, ch)
 		}
 	}
 	if len(exactMatches) > 0 {
@@ -121,16 +120,17 @@ func weightedRandomSelect(channels []*model.Channel) *model.Channel {
 	return channels[len(channels)-1]
 }
 
-func autoDistribute(group string, channels []*model.Channel) (*model.Channel, string, error) {
+func autoDistribute(ctx context.Context, group string, channels []*model.Channel) (*model.Channel, string, error) {
 	if len(channels) == 0 {
 		return nil, "", fmt.Errorf("当前分组 %s 下无可用渠道", group)
 	}
 	ch, _ := nextAutoChannel(group, channels)
 	selectedModel := selectAutoModel(ch)
+	logger.Log.Debugf("autoDistribute: round-robin selected channel #%d model %s for group %s", ch.Id, selectedModel, group)
 	return ch, selectedModel, nil
 }
 
-func nonAutoDistribute(userId int, requestModel string, channels []*model.Channel) (*model.Channel, string, error) {
+func nonAutoDistribute(ctx context.Context, userId int, requestModel string, channels []*model.Channel) (*model.Channel, string, error) {
 	matched, alias := matchChannelsByAlias(requestModel, channels)
 	if len(matched) == 0 {
 		return nil, "", fmt.Errorf("no channel found for model %s", requestModel)
@@ -140,17 +140,24 @@ func nonAutoDistribute(userId int, requestModel string, channels []*model.Channe
 
 	// Check affinity first: prefer the last used channel for this (user, model)
 	if affChId, ok := AffinityGlobal.Get(userId, requestModel); ok {
+		logger.Log.Debugf("nonAutoDistribute: affinity hit for user %d model %s -> channel #%d", userId, requestModel, affChId)
 		for _, c := range matched {
 			if c.Id == affChId {
 				ch = c
 				break
 			}
 		}
+		if ch == nil {
+			logger.Log.Debugf("nonAutoDistribute: affinity channel #%d not in matched set, falling back to weighted select", affChId)
+		}
+	} else {
+		logger.Log.Debugf("nonAutoDistribute: no affinity for user %d model %s, using weighted select", userId, requestModel)
 	}
 
 	// If no affinity or affinity channel not in matched set, pick weighted random by Priority
 	if ch == nil {
 		ch = weightedRandomSelect(matched)
+		logger.Log.Debugf("nonAutoDistribute: weighted select chose channel #%d for user %d model %s", ch.Id, userId, requestModel)
 	}
 	if ch == nil {
 		return nil, "", fmt.Errorf("no channel found for model %s", requestModel)
@@ -175,6 +182,7 @@ func nonAutoDistribute(userId int, requestModel string, channels []*model.Channe
 	}
 	models := ch.GetModels()
 	if targedIdx < len(models) {
+		logger.Log.Debugf("nonAutoDistribute: selected channel #%d model %s for user %d request %s", ch.Id, models[targedIdx], userId, requestModel)
 		return ch, models[targedIdx], nil
 	}
 	return nil, "", fmt.Errorf("no model found for alias %s", alias)
@@ -220,14 +228,14 @@ func Distribute() func(c *gin.Context) {
 				requestModel = "auto"
 				c.Set(ctxkey.RequestModel, requestModel)
 			}
-			channel, suggestedModel, err = SelectChannel(userGroup, requestModel, -1, userId)
+			channel, suggestedModel, err = SelectChannel(ctx, userGroup, requestModel, -1, userId)
 			if err != nil {
 				abortWithMessage(c, http.StatusServiceUnavailable, err.Error())
 				return
 			}
 		}
 
-		logger.Debugf(ctx, "user id %d, user group: %s, request model: %s, suggested model: %s, using channel #%d", userId, userGroup, requestModel, suggestedModel, channel.Id)
+		logger.Log.Debugf("user id %d, user group: %s, request model: %s, suggested model: %s, using channel #%d", userId, userGroup, requestModel, suggestedModel, channel.Id)
 		setDistributeContext(c, channel, requestModel, suggestedModel)
 		SetupContextForSelectedChannel(c, channel, suggestedModel)
 		c.Next()
@@ -257,17 +265,18 @@ func filterLastFailedChannel(channels []*model.Channel, lastFailedChannelId int)
 	return result
 }
 
-func SelectChannel(group, requestModel string, lastFailedChannelId int, userId int) (*model.Channel, string, error) {
+func SelectChannel(ctx context.Context, group, requestModel string, lastFailedChannelId int, userId int) (*model.Channel, string, error) {
 	channels := model.CacheGetGroupChannels(group)
 	channels = filterCoolingChannels(channels)
 	channels = filterLastFailedChannel(channels, lastFailedChannelId)
 	if len(channels) == 0 {
 		return nil, "", fmt.Errorf("no channels available for retry in group %s", group)
 	}
+	logger.Log.Infof("SelectChannel: group=%s model=%s userId=%d candidates=%d", group, requestModel, userId, len(channels))
 	if requestModel == "auto" {
-		return autoDistribute(group, channels)
+		return autoDistribute(ctx, group, channels)
 	} else {
-		return nonAutoDistribute(userId, requestModel, channels)
+		return nonAutoDistribute(ctx, userId, requestModel, channels)
 	}
 }
 

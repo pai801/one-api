@@ -79,33 +79,32 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 	responseText := ""
 	responseId := fmt.Sprintf("chatcmpl-%s", random.GetUUID())
 	createdTime := helper.GetTimestamp()
-	ctx := c.Request.Context()
 
 	common.SetEventStreamHeaders(c)
 
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.SysError("error reading stream response: " + err.Error())
+		logger.Log.Errorf("error reading stream response: " + err.Error())
 		err := resp.Body.Close()
 		if err != nil {
-			logger.Errorf(ctx, "[%s] %+v", "close_response_body_failed", err)
+			logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 			return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError), ""
 		}
-		logger.Errorf(ctx, "[%s] %+v", "read_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "read_response_body_failed", err)
 		return openai.ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError), ""
 	}
 
 	err = resp.Body.Close()
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "close_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 		return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError), ""
 	}
 
 	var palmResponse ChatResponse
 	err = json.Unmarshal(responseBody, &palmResponse)
 	if err != nil {
-		logger.SysError("error unmarshalling stream response: " + err.Error())
-		logger.Errorf(ctx, "[%s] %+v", "unmarshal_response_body_failed", err)
+		logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
+		logger.Log.Errorf("[%s] %+v", "unmarshal_response_body_failed", err)
 		return openai.ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError), ""
 	}
 
@@ -118,14 +117,14 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
-		logger.SysError("error marshalling stream response: " + err.Error())
-		logger.Errorf(ctx, "[%s] %+v", "marshal_response_body_failed", err)
+		logger.Log.Errorf("error marshalling stream response: " + err.Error())
+		logger.Log.Errorf("[%s] %+v", "marshal_response_body_failed", err)
 		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError), ""
 	}
 
 	err = render.ObjectData(c, string(jsonResponse))
 	if err != nil {
-		logger.SysError(err.Error())
+		logger.Log.Errorf(err.Error())
 	}
 
 	render.Done(c)
@@ -134,21 +133,20 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 }
 
 func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName string) (*model.ErrorWithStatusCode, *model.Usage) {
-	ctx := c.Request.Context()
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "read_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "read_response_body_failed", err)
 		return openai.ErrorWrapper(err, "read_response_body_failed", http.StatusInternalServerError), nil
 	}
 	err = resp.Body.Close()
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "close_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "close_response_body_failed", err)
 		return openai.ErrorWrapper(err, "close_response_body_failed", http.StatusInternalServerError), nil
 	}
 	var palmResponse ChatResponse
 	err = json.Unmarshal(responseBody, &palmResponse)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "unmarshal_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "unmarshal_response_body_failed", err)
 		return openai.ErrorWrapper(err, "unmarshal_response_body_failed", http.StatusInternalServerError), nil
 	}
 	if palmResponse.Error.Code != 0 || len(palmResponse.Candidates) == 0 {
@@ -173,7 +171,7 @@ func Handler(c *gin.Context, resp *http.Response, promptTokens int, modelName st
 	fullTextResponse.Usage = usage
 	jsonResponse, err := json.Marshal(fullTextResponse)
 	if err != nil {
-		logger.Errorf(ctx, "[%s] %+v", "marshal_response_body_failed", err)
+		logger.Log.Errorf("[%s] %+v", "marshal_response_body_failed", err)
 		return openai.ErrorWrapper(err, "marshal_response_body_failed", http.StatusInternalServerError), nil
 	}
 	c.Writer.Header().Set("Content-Type", "application/json")

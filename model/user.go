@@ -159,7 +159,7 @@ func (user *User) Insert(ctx context.Context, inviterId int) error {
 	result.Error = cleanToken.Insert()
 	if result.Error != nil {
 		// do not block
-		logger.SysError(fmt.Sprintf("create default token for user %d failed: %s", user.Id, result.Error.Error()))
+		logger.Log.Errorf("create default token for user %d failed: %s", user.Id, result.Error.Error())
 	}
 	return nil
 }
@@ -316,7 +316,7 @@ func IsAdmin(userId int) bool {
 	var user User
 	err := DB.Where("id = ?", userId).Select("role").Find(&user).Error
 	if err != nil {
-		logger.SysError("no such user " + err.Error())
+		logger.Log.Errorf("no such user " + err.Error())
 		return false
 	}
 	return user.Role >= RoleAdminUser
@@ -425,7 +425,7 @@ func updateUserUsedQuotaAndRequestCount(id int, quota int64, count int) {
 		},
 	).Error
 	if err != nil {
-		logger.SysError("failed to update user used quota and request count: " + err.Error())
+		logger.Log.Errorf("failed to update user used quota and request count: " + err.Error())
 	}
 }
 
@@ -436,14 +436,14 @@ func updateUserUsedQuota(id int, quota int64) {
 		},
 	).Error
 	if err != nil {
-		logger.SysError("failed to update user used quota: " + err.Error())
+		logger.Log.Errorf("failed to update user used quota: " + err.Error())
 	}
 }
 
 func updateUserRequestCount(id int, count int) {
 	err := DB.Model(&User{}).Where("id = ?", id).Update("request_count", gorm.Expr("request_count + ?", count)).Error
 	if err != nil {
-		logger.SysError("failed to update user request count: " + err.Error())
+		logger.Log.Errorf("failed to update user request count: " + err.Error())
 	}
 }
 

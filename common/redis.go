@@ -17,25 +17,25 @@ var RedisEnabled = true
 func InitRedisClient() (err error) {
 	if os.Getenv("REDIS_CONN_STRING") == "" {
 		RedisEnabled = false
-		logger.SysLog("REDIS_CONN_STRING not set, Redis is not enabled")
+		logger.Log.Infof("REDIS_CONN_STRING not set, Redis is not enabled")
 		return nil
 	}
 	if os.Getenv("SYNC_FREQUENCY") == "" {
 		RedisEnabled = false
-		logger.SysLog("SYNC_FREQUENCY not set, Redis is disabled")
+		logger.Log.Infof("SYNC_FREQUENCY not set, Redis is disabled")
 		return nil
 	}
 	redisConnString := os.Getenv("REDIS_CONN_STRING")
 	if os.Getenv("REDIS_MASTER_NAME") == "" {
-		logger.SysLog("Redis is enabled")
+		logger.Log.Infof("Redis is enabled")
 		opt, err := redis.ParseURL(redisConnString)
 		if err != nil {
-			logger.FatalLog("failed to parse Redis connection string: " + err.Error())
+			logger.Log.Fatalf("failed to parse Redis connection string: " + err.Error())
 		}
 		RDB = redis.NewClient(opt)
 	} else {
 		// cluster mode
-		logger.SysLog("Redis cluster mode enabled")
+		logger.Log.Infof("Redis cluster mode enabled")
 		RDB = redis.NewUniversalClient(&redis.UniversalOptions{
 			Addrs:      strings.Split(redisConnString, ","),
 			Password:   os.Getenv("REDIS_PASSWORD"),
@@ -47,7 +47,7 @@ func InitRedisClient() (err error) {
 
 	_, err = RDB.Ping(ctx).Result()
 	if err != nil {
-		logger.FatalLog("Redis ping test failed: " + err.Error())
+		logger.Log.Fatalf("Redis ping test failed: " + err.Error())
 	}
 	return err
 }
@@ -55,7 +55,7 @@ func InitRedisClient() (err error) {
 func ParseRedisOption() *redis.Options {
 	opt, err := redis.ParseURL(os.Getenv("REDIS_CONN_STRING"))
 	if err != nil {
-		logger.FatalLog("failed to parse Redis connection string: " + err.Error())
+		logger.Log.Fatalf("failed to parse Redis connection string: " + err.Error())
 	}
 	return opt
 }

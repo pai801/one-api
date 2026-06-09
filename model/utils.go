@@ -46,7 +46,7 @@ func addNewRecord(type_ int, id int, value int64) {
 }
 
 func batchUpdate() {
-	logger.SysLog("batch update started")
+	logger.Log.Infof("batch update started")
 	for i := 0; i < BatchUpdateTypeCount; i++ {
 		batchUpdateLocks[i].Lock()
 		store := batchUpdateStores[i]
@@ -58,12 +58,12 @@ func batchUpdate() {
 			case BatchUpdateTypeUserQuota:
 				err := increaseUserQuota(key, value)
 				if err != nil {
-					logger.SysError("failed to batch update user quota: " + err.Error())
+					logger.Log.Errorf("failed to batch update user quota: " + err.Error())
 				}
 			case BatchUpdateTypeTokenQuota:
 				err := increaseTokenQuota(key, value)
 				if err != nil {
-					logger.SysError("failed to batch update token quota: " + err.Error())
+					logger.Log.Errorf("failed to batch update token quota: " + err.Error())
 				}
 			case BatchUpdateTypeUsedQuota:
 				updateUserUsedQuota(key, value)
@@ -74,5 +74,5 @@ func batchUpdate() {
 			}
 		}
 	}
-	logger.SysLog("batch update finished")
+	logger.Log.Infof("batch update finished")
 }

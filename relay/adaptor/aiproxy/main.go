@@ -118,7 +118,7 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 		var AIProxyLibraryResponse LibraryStreamResponse
 		err := json.Unmarshal([]byte(data), &AIProxyLibraryResponse)
 		if err != nil {
-			logger.SysError("error unmarshalling stream response: " + err.Error())
+			logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 			continue
 		}
 		if len(AIProxyLibraryResponse.Documents) != 0 {
@@ -127,18 +127,18 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 		response := streamResponseAIProxyLibrary2OpenAI(&AIProxyLibraryResponse)
 		err = render.ObjectData(c, response)
 		if err != nil {
-			logger.SysError(err.Error())
+			logger.Log.Errorf(err.Error())
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		logger.SysError("error reading stream: " + err.Error())
+		logger.Log.Errorf("error reading stream: " + err.Error())
 	}
 
 	response := documentsAIProxyLibrary(documents)
 	err := render.ObjectData(c, response)
 	if err != nil {
-		logger.SysError(err.Error())
+		logger.Log.Errorf(err.Error())
 	}
 	render.Done(c)
 

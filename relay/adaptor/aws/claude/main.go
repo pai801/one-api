@@ -153,7 +153,7 @@ func StreamHandler(c *gin.Context, awsCli *bedrockruntime.Client) (*relaymodel.E
 			claudeResp := new(anthropic.StreamResponse)
 			err := json.NewDecoder(bytes.NewReader(v.Value.Bytes)).Decode(claudeResp)
 			if err != nil {
-				logger.SysError("error unmarshalling stream response: " + err.Error())
+				logger.Log.Errorf("error unmarshalling stream response: " + err.Error())
 				return false
 			}
 
@@ -189,7 +189,7 @@ func StreamHandler(c *gin.Context, awsCli *bedrockruntime.Client) (*relaymodel.E
 			}
 			jsonStr, err := json.Marshal(response)
 			if err != nil {
-				logger.SysError("error marshalling stream response: " + err.Error())
+				logger.Log.Errorf("error marshalling stream response: " + err.Error())
 				return true
 			}
 			c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonStr)})

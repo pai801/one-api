@@ -3,18 +3,19 @@ package common
 import (
 	"flag"
 	"fmt"
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/logger"
 	"log"
 	"os"
 	"path/filepath"
+
+	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/logger"
 )
 
 var (
 	Port         = flag.Int("port", 3000, "the listening port")
 	PrintVersion = flag.Bool("version", false, "print version and exit")
 	PrintHelp    = flag.Bool("help", false, "print help and exit")
-	LogDir       = flag.String("log-dir", "./logs", "specify the log directory")
+	LogDir       = flag.String("log-dir", "", "specify the log directory")
 )
 
 func printHelp() {
@@ -39,7 +40,7 @@ func Init() {
 
 	if os.Getenv("SESSION_SECRET") != "" {
 		if os.Getenv("SESSION_SECRET") == "random_string" {
-			logger.SysError("SESSION_SECRET is set to an example value, please change it to a random string.")
+			logger.Log.Errorf("SESSION_SECRET is set to an example value, please change it to a random string.")
 		} else {
 			config.SessionSecret = os.Getenv("SESSION_SECRET")
 		}

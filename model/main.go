@@ -28,7 +28,7 @@ func CreateRootAccountIfNeed() error {
 	var user User
 	//if user.Status != util.UserStatusEnabled {
 	if err := DB.First(&user).Error; err != nil {
-		logger.SysLog("no user exists, creating a root user for you: username is root, password is 123456")
+		logger.Log.Infof("no user exists, creating a root user for you: username is root, password is 123456")
 		hashedPassword, err := common.Password2Hash("123456")
 		if err != nil {
 			return err
@@ -48,7 +48,7 @@ func CreateRootAccountIfNeed() error {
 		}
 		DB.Create(&rootUser)
 		if config.InitialRootToken != "" {
-			logger.SysLog("creating initial root token as requested")
+			logger.Log.Infof("creating initial root token as requested")
 			token := Token{
 				Id:             1,
 				UserId:         rootUser.Id,
@@ -84,9 +84,9 @@ func chooseDB(envName string) (*gorm.DB, error) {
 }
 
 func openPostgreSQL(dsn string) (*gorm.DB, error) {
-	logger.SysLog("using PostgreSQL as database")
+	logger.Log.Infof("using PostgreSQL as database")
 	newLogger := glog.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		log.New(&logger.LogWriter{}, "\r\n", log.LstdFlags),
 		glog.Config{
 			SlowThreshold:             15 * time.Second, // 慢 SQL 阈值改为 5s
 			LogLevel:                  glog.Warn,
@@ -105,7 +105,7 @@ func openPostgreSQL(dsn string) (*gorm.DB, error) {
 }
 
 func openMySQL(dsn string) (*gorm.DB, error) {
-	logger.SysLog("using MySQL as database")
+	logger.Log.Infof("using MySQL as database")
 	common.UsingMySQL = true
 	return gorm.Open(mysql.Open(dsn), &gorm.Config{
 		PrepareStmt: true, // precompile SQL
@@ -113,7 +113,7 @@ func openMySQL(dsn string) (*gorm.DB, error) {
 }
 
 func openSQLite() (*gorm.DB, error) {
-	logger.SysLog("SQL_DSN not set, using SQLite as database")
+	logger.Log.Infof("SQL_DSN not set, using SQLite as database")
 	common.UsingSQLite = true
 	dsn := fmt.Sprintf("%s?_busy_timeout=%d", common.SQLitePath, common.SQLiteBusyTimeout)
 	return gorm.Open(sqlite.Open(dsn), &gorm.Config{
@@ -125,7 +125,7 @@ func InitDB() {
 	var err error
 	DB, err = chooseDB("SQL_DSN")
 	if err != nil {
-		logger.FatalLog("failed to initialize database: " + err.Error())
+		logger.Log.Fatalf("failed to initialize database: " + err.Error())
 		return
 	}
 
@@ -139,12 +139,12 @@ func InitDB() {
 		_, _ = sqlDB.Exec("DROP INDEX idx_channels_key ON channels;") // TODO: delete this line when most users have upgraded
 	}
 
-	logger.SysLog("database migration started")
+	logger.Log.Infof("database migration started")
 	if err = migrateDB(); err != nil {
-		logger.FatalLog("failed to migrate database: " + err.Error())
+		logger.Log.Fatalf("failed to migrate database: " + err.Error())
 		return
 	}
-	logger.SysLog("database migrated")
+	logger.Log.Infof("database migrated")
 }
 
 func migrateDB() error {
@@ -182,11 +182,11 @@ func InitLogDB() {
 		return
 	}
 
-	logger.SysLog("using secondary database for table logs")
+	logger.Log.Infof("using secondary database for table logs")
 	var err error
 	LOG_DB, err = chooseDB("LOG_SQL_DSN")
 	if err != nil {
-		logger.FatalLog("failed to initialize secondary database: " + err.Error())
+		logger.Log.Fatalf("failed to initialize secondary database: " + err.Error())
 		return
 	}
 
@@ -196,13 +196,13 @@ func InitLogDB() {
 		return
 	}
 
-	logger.SysLog("secondary database migration started")
+	logger.Log.Infof("secondary database migration started")
 	err = migrateLOGDB()
 	if err != nil {
-		logger.FatalLog("failed to migrate secondary database: " + err.Error())
+		logger.Log.Fatalf("failed to migrate secondary database: " + err.Error())
 		return
 	}
-	logger.SysLog("secondary database migrated")
+	logger.Log.Infof("secondary database migrated")
 }
 
 func migrateLOGDB() error {
@@ -220,7 +220,7 @@ func setDBConns(db *gorm.DB) *sql.DB {
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		logger.FatalLog("failed to connect database: " + err.Error())
+		logger.Log.Fatalf("failed to connect database: " + err.Error())
 		return nil
 	}
 

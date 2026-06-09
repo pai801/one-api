@@ -49,10 +49,10 @@ func recordLogHelper(ctx context.Context, log *Log) {
 	log.RequestId = requestId
 	err := LOG_DB.Create(log).Error
 	if err != nil {
-		logger.Error(ctx, "failed to record log: "+err.Error())
+		logger.Log.Errorf("failed to record log: "+err.Error())
 		return
 	}
-	logger.Infof(ctx, "record log userId:%v, userName:%v, channelName:%v, modelName:%v, isStream:%v", log.UserId, log.Username, log.ChannelName, log.ModelName, log.IsStream)
+	logger.Log.Infof("record log userId:%v, userName:%v, channelName:%v, modelName:%v, isStream:%v", log.UserId, log.Username, log.ChannelName, log.ModelName, log.IsStream)
 }
 
 func RecordLog(ctx context.Context, userId int, logType int, content string) {

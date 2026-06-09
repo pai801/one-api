@@ -96,7 +96,7 @@ func loadOptionsFromDatabase() {
 		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
-			logger.SysError("failed to update option map: " + err.Error())
+			logger.Log.Errorf("failed to update option map: " + err.Error())
 		}
 	}
 }
@@ -104,7 +104,7 @@ func loadOptionsFromDatabase() {
 func SyncOptions(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
-		logger.SysLog("syncing options from database")
+		logger.Log.Infof("syncing options from database")
 		loadOptionsFromDatabase()
 	}
 }
@@ -265,7 +265,7 @@ func updateModelEndpointTypesMap(jsonValue string) {
 
 	var rawMap map[string][]string
 	if err := json.Unmarshal([]byte(jsonValue), &rawMap); err != nil {
-		logger.SysError("failed to parse ModelEndpointTypes: " + err.Error())
+		logger.Log.Errorf("failed to parse ModelEndpointTypes: " + err.Error())
 		return
 	}
 

@@ -151,7 +151,7 @@ func convertInputItem(item map[string]interface{}) map[string]interface{} {
 	case "web_search_call_output", "web_search_output":
 		return convertWebSearchCallOutputItem(item)
 	default:
-		logger.SysError("unknown codex input item type: " + itemType)
+		logger.Log.Errorf("unknown codex input item type: " + itemType)
 		return nil
 	}
 }

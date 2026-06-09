@@ -77,7 +77,7 @@ func RelayErrorHandler(resp *http.Response) (ErrorWithStatusCode *model.ErrorWit
 		return
 	}
 	if config.DebugEnabled {
-		logger.SysLog(fmt.Sprintf("error happened, status code: %d, response: \n%s", resp.StatusCode, string(responseBody)))
+		logger.Log.Infof("error happened, status code: %d, response: \n%s", resp.StatusCode, string(responseBody))
 	}
 	err = resp.Body.Close()
 	if err != nil {
