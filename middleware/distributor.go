@@ -272,7 +272,7 @@ func SelectChannel(ctx context.Context, group, requestModel string, lastFailedCh
 	if len(channels) == 0 {
 		return nil, "", fmt.Errorf("no channels available for retry in group %s", group)
 	}
-	logger.Log.Infof("SelectChannel: group=%s model=%s userId=%d candidates=%d", group, requestModel, userId, len(channels))
+	logger.Log.Debugf("SelectChannel: group=%s model=%s userId=%d candidates=%d", group, requestModel, userId, len(channels))
 	if requestModel == "auto" {
 		return autoDistribute(ctx, group, channels)
 	} else {

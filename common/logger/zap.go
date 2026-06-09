@@ -123,8 +123,8 @@ func encoder(config *LogCfg) zapcore.Encoder {
 	encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder                                 // INFO / ERROR 大写
 	encoderConfig.MessageKey = "message"                                                    // 日志内容字段
 	encoderConfig.CallerKey = "stack"                                                       // 显示调用堆栈（默认文件 + 行号）
-	encoderConfig.EncodeCaller = zapcore.FullCallerEncoder
 	if config.Stdout == "console" {
+		encoderConfig.EncodeCaller = zapcore.FullCallerEncoder
 		return zapcore.NewConsoleEncoder(encoderConfig)
 	}
 	return zapcore.NewJSONEncoder(encoderConfig)

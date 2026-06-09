@@ -81,7 +81,7 @@ func fetchAndUpdateUserQuota(ctx context.Context, id int) (quota int64, err erro
 	}
 	err = common.RedisSet(fmt.Sprintf("user_quota:%d", id), fmt.Sprintf("%d", quota), time.Duration(UserId2QuotaCacheSeconds)*time.Second)
 	if err != nil {
-		logger.Log.Errorf("Redis set user quota error: "+err.Error())
+		logger.Log.Errorf("Redis set user quota error: " + err.Error())
 	}
 	return
 }
@@ -214,13 +214,13 @@ func InitChannelCache() {
 	channelSyncLock.Lock()
 	group2model2channels = newGroup2model2channels
 	channelSyncLock.Unlock()
-	logger.Log.Infof("channels synced from database")
+	logger.Log.Debugf("channels synced from database")
 }
 
 func SyncChannelCache(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
-		logger.Log.Infof("syncing channels from database")
+		logger.Log.Debugf("syncing channels from database")
 		InitChannelCache()
 	}
 }

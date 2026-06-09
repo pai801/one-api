@@ -4,13 +4,14 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/songquanpeng/one-api/common/config"
-	"github.com/songquanpeng/one-api/common/logger"
-	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
-	"github.com/songquanpeng/one-api/relay/apitype"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/songquanpeng/one-api/common/config"
+	"github.com/songquanpeng/one-api/common/logger"
+	"github.com/songquanpeng/one-api/relay/apitype"
+	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
 )
 
 const ModelEndpointTypesKey = "ModelEndpointTypes"
@@ -104,7 +105,7 @@ func loadOptionsFromDatabase() {
 func SyncOptions(frequency int) {
 	for {
 		time.Sleep(time.Duration(frequency) * time.Second)
-		logger.Log.Infof("syncing options from database")
+		logger.Log.Debugf("syncing options from database")
 		loadOptionsFromDatabase()
 	}
 }

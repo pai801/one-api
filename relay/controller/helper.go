@@ -94,7 +94,7 @@ func preConsumeQuota(ctx context.Context, textRequest *relaymodel.GeneralOpenAIR
 		// in this case, we do not pre-consume quota
 		// because the user has enough quota
 		preConsumedQuota = 0
-		logger.Log.Infof("user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota)
+		//logger.Log.Infof("user %d has enough quota %d, trusted and no need to pre-consume", meta.UserId, userQuota)
 	}
 	if preConsumedQuota > 0 {
 		err := model.PreConsumeTokenQuota(meta.TokenId, preConsumedQuota)
@@ -128,11 +128,11 @@ func postConsumeQuota(ctx context.Context, usage *relaymodel.Usage, meta *meta.M
 	quotaDelta := quota - preConsumedQuota
 	err := model.PostConsumeTokenQuota(meta.TokenId, quotaDelta)
 	if err != nil {
-		logger.Log.Errorf("error consuming token remain quota: "+err.Error())
+		logger.Log.Errorf("error consuming token remain quota: " + err.Error())
 	}
 	err = model.CacheUpdateUserQuota(ctx, meta.UserId)
 	if err != nil {
-		logger.Log.Errorf("error update user quota cache: "+err.Error())
+		logger.Log.Errorf("error update user quota cache: " + err.Error())
 	}
 	logContent := fmt.Sprintf("倍率：%.2f × %.2f × %.2f", modelRatio, groupRatio, completionRatio)
 
