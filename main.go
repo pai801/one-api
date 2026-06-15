@@ -14,6 +14,7 @@ import (
 	"github.com/songquanpeng/one-api/common/client"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/i18n"
+	"github.com/songquanpeng/one-api/common/logcleanup"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/controller"
 	"github.com/songquanpeng/one-api/middleware"
@@ -40,6 +41,7 @@ func main() {
 	// Initialize SQL Database
 	model.InitDB()
 	model.InitLogDB()
+	logcleanup.Start()
 
 	var err error
 	err = model.CreateRootAccountIfNeed()
