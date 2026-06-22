@@ -139,6 +139,7 @@ func embeddingResponseBaidu2OpenAI(response *EmbeddingResponse) *openai.Embeddin
 func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {
 	var usage model.Usage
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, constant.ScannerBufferInitial), constant.ScannerBufferMax)
 	scanner.Split(bufio.ScanLines)
 
 	common.SetEventStreamHeaders(c)

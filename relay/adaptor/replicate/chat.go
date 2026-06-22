@@ -14,6 +14,7 @@ import (
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/common/render"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
+	"github.com/songquanpeng/one-api/relay/constant"
 	"github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
 )
@@ -141,6 +142,7 @@ func chatStreamHandler(c *gin.Context, streamUrl string) (responseText string, e
 	}
 
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, constant.ScannerBufferInitial), constant.ScannerBufferMax)
 	scanner.Split(bufio.ScanLines)
 
 	common.SetEventStreamHeaders(c)

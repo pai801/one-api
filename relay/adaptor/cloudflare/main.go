@@ -15,6 +15,7 @@ import (
 	"github.com/songquanpeng/one-api/common/helper"
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
+	"github.com/songquanpeng/one-api/relay/constant"
 	"github.com/songquanpeng/one-api/relay/model"
 )
 
@@ -30,6 +31,7 @@ func ConvertCompletionsRequest(textRequest model.GeneralOpenAIRequest) *Request 
 
 func StreamHandler(c *gin.Context, resp *http.Response, promptTokens int, modelName string) (*model.ErrorWithStatusCode, *model.Usage) {
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, constant.ScannerBufferInitial), constant.ScannerBufferMax)
 	scanner.Split(bufio.ScanLines)
 
 	common.SetEventStreamHeaders(c)

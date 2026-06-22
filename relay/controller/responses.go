@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common"
+	"github.com/songquanpeng/one-api/relay/constant"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/helper"
@@ -254,21 +255,15 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 		// 流式响应处理
 		common.SetEventStreamHeaders(c)
 		c.Writer.WriteHeader(http.StatusOK)
-
-		// 追加分隔符到文件（文件不存在则创建）
-		codex.AppendToFile("response_raw.txt", "----------\n")
-
 		var converterState any
 		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, 1024*1024), 10*1024*1024)
+		scanner.Buffer(make([]byte, constant.ScannerBufferInitial), constant.ScannerBufferMax)
 
 		for scanner.Scan() {
 			line := scanner.Bytes()
 			if len(line) == 0 {
 				continue
 			}
-			// 追加当前行到文件
-			codex.AppendToFile("response_raw.txt", string(append(line, '\n')))
 			events := codex.ConvertOpenAIChatToResponsesWithContext(requestBody, nil, line, &converterState, fallbackReasoning)
 			for _, event := range events {
 				_, _ = c.Writer.WriteString(event)
@@ -433,7 +428,9 @@ func preConsumeQuotaForResponses(ctx context.Context, promptTokens int, ratio fl
 func postConsumeQuotaForResponses(ctx context.Context, usage *model.Usage, meta *metaPkg.Meta, ratio float64, preConsumedQuota int64, modelRatio float64, groupRatio float64, reqBody string, respBody string, reqHeader string) {
 	if usage == nil {
 		logger.Log.Errorf("usage is nil, which is unexpected")
-		return
+		usage = &model.Usage{
+			CompletionTokensDetails: &model.CompletionTokensDetails{},
+		}
 	}
 
 	var quota int64
@@ -454,12 +451,12 @@ func postConsumeQuotaForResponses(ctx context.Context, usage *model.Usage, meta 
 	quotaDelta := quota - preConsumedQuota
 	err := dbmodel.PostConsumeTokenQuota(meta.TokenId, quotaDelta)
 	if err != nil {
-		logger.Log.Errorf("error consuming token remain quota: "+err.Error())
+		logger.Log.Errorf("error consuming token remain quota: " + err.Error())
 	}
 
 	err = dbmodel.CacheUpdateUserQuota(ctx, meta.UserId)
 	if err != nil {
-		logger.Log.Errorf("error update user quota cache: "+err.Error())
+		logger.Log.Errorf("error update user quota cache: " + err.Error())
 	}
 
 	logContent := fmt.Sprintf("Responses API - 倍率：%.2f × %.2f × %.2f", modelRatio, groupRatio, completionRatio)

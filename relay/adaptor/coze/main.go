@@ -16,6 +16,7 @@ import (
 	"github.com/songquanpeng/one-api/common/logger"
 	"github.com/songquanpeng/one-api/relay/adaptor/coze/constant/messagetype"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
+	"github.com/songquanpeng/one-api/relay/constant"
 	"github.com/songquanpeng/one-api/relay/model"
 )
 
@@ -111,6 +112,7 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 	var responseText string
 	createdTime := helper.GetTimestamp()
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, constant.ScannerBufferInitial), constant.ScannerBufferMax)
 	scanner.Split(bufio.ScanLines)
 
 	common.SetEventStreamHeaders(c)

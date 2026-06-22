@@ -20,6 +20,7 @@ import (
 	"github.com/songquanpeng/one-api/model"
 	"github.com/songquanpeng/one-api/relay/adaptor/openai"
 	"github.com/songquanpeng/one-api/relay/billing"
+	"github.com/songquanpeng/one-api/relay/constant"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
 	"github.com/songquanpeng/one-api/relay/channeltype"
 	"github.com/songquanpeng/one-api/relay/meta"
@@ -267,6 +268,7 @@ func getTextFromVerboseJSON(body []byte) (string, error) {
 
 func getTextFromSRT(body []byte) (string, error) {
 	scanner := bufio.NewScanner(strings.NewReader(string(body)))
+	scanner.Buffer(make([]byte, constant.ScannerBufferInitial), constant.ScannerBufferMax)
 	var builder strings.Builder
 	var textLine bool
 	for scanner.Scan() {
