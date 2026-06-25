@@ -1,6 +1,7 @@
 package logcleanup
 
 import (
+	"os"
 	"testing"
 	"time"
 )
@@ -34,6 +35,51 @@ func TestRetentionDaysFromEnv(t *testing.T) {
 	t.Setenv("LOG_CLEAN_DAYS", "abc")
 	if got := RetentionDays(); got != 7 {
 		t.Fatalf("got %d, want 7", got)
+	}
+}
+
+func TestBodiesRetentionDaysFromEnv(t *testing.T) {
+	t.Setenv("LOG_CLEAN_BODIES_DAYS", " 2 ")
+	if got := BodiesRetentionDays(); got != 2 {
+		t.Fatalf("got %d, want 2", got)
+	}
+
+	t.Setenv("LOG_CLEAN_BODIES_DAYS", "0")
+	if got := BodiesRetentionDays(); got != 0 {
+		t.Fatalf("got %d, want 0", got)
+	}
+
+	t.Setenv("LOG_CLEAN_BODIES_DAYS", "2")
+	if got := BodiesRetentionDays(); got != 2 {
+		t.Fatalf("got %d, want 2", got)
+	}
+
+	t.Setenv("LOG_CLEAN_BODIES_DAYS", "-1")
+	if got := BodiesRetentionDays(); got != 3 {
+		t.Fatalf("got %d, want 3", got)
+	}
+
+	t.Setenv("LOG_CLEAN_BODIES_DAYS", "4")
+	if got := BodiesRetentionDays(); got != 3 {
+		t.Fatalf("got %d, want 3", got)
+	}
+
+	t.Setenv("LOG_CLEAN_BODIES_DAYS", "abc")
+	if got := BodiesRetentionDays(); got != 3 {
+		t.Fatalf("got %d, want 3", got)
+	}
+
+	orig, hadOrig := os.LookupEnv("LOG_CLEAN_BODIES_DAYS")
+	os.Unsetenv("LOG_CLEAN_BODIES_DAYS")
+	defer func() {
+		if hadOrig {
+			os.Setenv("LOG_CLEAN_BODIES_DAYS", orig)
+		} else {
+			os.Unsetenv("LOG_CLEAN_BODIES_DAYS")
+		}
+	}()
+	if got := BodiesRetentionDays(); got != 3 {
+		t.Fatalf("got %d, want 3", got)
 	}
 }
 

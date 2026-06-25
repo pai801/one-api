@@ -217,6 +217,15 @@ func DeleteOldLog(targetTimestamp int64) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
+func ClearOldLogBodies(targetTimestamp int64) (int64, error) {
+	result := LOG_DB.Model(&Log{}).Where("created_at < ?", targetTimestamp).Updates(map[string]interface{}{
+		"request_body":   "",
+		"response_body":  "",
+		"request_header": "",
+	})
+	return result.RowsAffected, result.Error
+}
+
 type LogStatistic struct {
 	Day              string `gorm:"column:day"`
 	ModelName        string `gorm:"column:model_name"`
