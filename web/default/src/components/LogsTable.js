@@ -429,7 +429,7 @@ const LogsTable = () => {
               onClick={() => {
                 sortLog('created_time');
               }}
-              width={3}
+              width={2.7}
             >
               {t('log.table.time')}
             </Table.HeaderCell>
@@ -516,20 +516,20 @@ const LogsTable = () => {
                 <Table.HeaderCell
                   style={{ cursor: 'pointer' }}
                   onClick={() => {
-                    sortLog('completion_tokens');
-                  }}
-                  width={1}
-                >
-                  {t('log.table.completion_tokens')}
-                </Table.HeaderCell>
-                <Table.HeaderCell
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => {
                     sortLog('cached_tokens');
                   }}
                   width={1}
                 >
                   {t('log.table.cached_tokens')}
+                </Table.HeaderCell>
+                <Table.HeaderCell
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => {
+                    sortLog('completion_tokens');
+                  }}
+                  width={1}
+                >
+                  {t('log.table.completion_tokens')}
                 </Table.HeaderCell>
                 <Table.HeaderCell
                   style={{ cursor: 'pointer' }}
@@ -613,10 +613,10 @@ const LogsTable = () => {
                         {log.prompt_tokens ? log.prompt_tokens : ''}
                       </Table.Cell>
                       <Table.Cell>
-                        {log.completion_tokens ? log.completion_tokens : ''}
+                        {log.cached_tokens ? log.cached_tokens : ''}
                       </Table.Cell>
                       <Table.Cell>
-                        {log.cached_tokens ? log.cached_tokens : ''}
+                        {log.completion_tokens ? log.completion_tokens : ''}
                       </Table.Cell>
                       <Table.Cell>
                         {log.quota ? renderQuota(log.quota, t, 6) : ''}
