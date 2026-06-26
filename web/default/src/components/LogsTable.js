@@ -429,7 +429,7 @@ const LogsTable = () => {
               onClick={() => {
                 sortLog('created_time');
               }}
-              width={2.7}
+              width={2.4}
             >
               {t('log.table.time')}
             </Table.HeaderCell>
@@ -439,7 +439,7 @@ const LogsTable = () => {
                 onClick={() => {
                   sortLog('channel');
                 }}
-                width={1}
+                width={0.7}
               >
                 渠道ID
               </Table.HeaderCell>
@@ -460,7 +460,7 @@ const LogsTable = () => {
               onClick={() => {
                 sortLog('type');
               }}
-              width={1}
+              width={0.8}
             >
               {t('log.table.type')}
             </Table.HeaderCell>
@@ -478,7 +478,7 @@ const LogsTable = () => {
               onClick={() => {
                 sortLog('is_stream');
               }}
-              width={1}
+              width={0.8}
             >
               Stream
             </Table.HeaderCell>
@@ -490,7 +490,7 @@ const LogsTable = () => {
                     onClick={() => {
                       sortLog('username');
                     }}
-                    width={1.5}
+                    width={1.2}
                   >
                     {t('log.table.username')}
                   </Table.HeaderCell>
@@ -518,7 +518,7 @@ const LogsTable = () => {
                   onClick={() => {
                     sortLog('cached_tokens');
                   }}
-                  width={1}
+                  width={1.5}
                 >
                   {t('log.table.cached_tokens')}
                 </Table.HeaderCell>
@@ -613,7 +613,7 @@ const LogsTable = () => {
                         {log.prompt_tokens ? log.prompt_tokens : ''}
                       </Table.Cell>
                       <Table.Cell>
-                        {log.cached_tokens ? log.cached_tokens : ''}
+                        {log.cached_tokens ? (log.prompt_tokens && log.prompt_tokens > 0 ? `${log.cached_tokens} (${(log.cached_tokens / log.prompt_tokens * 100).toFixed(2)}%)` : log.cached_tokens) : ''}
                       </Table.Cell>
                       <Table.Cell>
                         {log.completion_tokens ? log.completion_tokens : ''}

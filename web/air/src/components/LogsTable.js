@@ -126,9 +126,17 @@ const LogsTable = () => {
     }
   }, {
     title: '缓存', dataIndex: 'cached_tokens', render: (text, record, index) => {
-      return (parseInt(text) > 0 && (record.type === 0 || record.type === 2) ? <div>
-        {<span> {text} </span>}
-      </div> : <></>);
+      const cachedTokens = parseInt(text);
+      const promptTokens = record.prompt_tokens;
+      // 当缓存tokens大于0且类型为0或2时显示
+      if (cachedTokens > 0 && (record.type === 0 || record.type === 2)) {
+        // 计算缓存命中率（保留1位小数）
+        const displayText = promptTokens && promptTokens > 0
+          ? `${text} (${(cachedTokens / promptTokens * 100).toFixed(1)}%)`
+          : text;
+        return <div><span> {displayText} </span></div>;
+      }
+      return <></>;
     }
   }, {
     title: '花费', dataIndex: 'quota', render: (text, record, index) => {
