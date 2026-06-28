@@ -9,10 +9,21 @@ import (
 	"github.com/songquanpeng/one-api/common"
 )
 
-func StringData(c *gin.Context, str string) {
+func StringData(c *gin.Context, str string, event ...string) {
 	str = strings.TrimPrefix(str, "data: ")
 	str = strings.TrimSuffix(str, "\r")
-	c.Render(-1, common.CustomEvent{Data: "data: " + str})
+	ev := ""
+	if len(event) > 0 {
+		ev = event[0]
+	}
+	c.Render(-1, common.CustomEvent{Event: ev, Data: "data: " + str})
+	c.Writer.Flush()
+}
+
+func EventData(c *gin.Context, eventName string, data string) {
+	data = strings.TrimPrefix(data, "data: ")
+	data = strings.TrimSuffix(data, "\r")
+	c.Render(-1, common.CustomEvent{Event: eventName, Data: "data: " + data})
 	c.Writer.Flush()
 }
 

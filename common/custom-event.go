@@ -55,16 +55,26 @@ type CustomEvent struct {
 }
 
 func encode(writer io.Writer, event CustomEvent) error {
-	w := checkWriter(writer)
-	return writeData(w, event.Data)
+	var buf strings.Builder
+	if event.Event != "" {
+		buf.WriteString("event: ")
+		buf.WriteString(event.Event)
+		buf.WriteByte('\n')
+	}
+	if _, err := dataReplacer.WriteString(&buf, fmt.Sprint(event.Data)); err != nil {
+		return err
+	}
+	buf.WriteString("\n\n")
+	_, err := writer.Write([]byte(buf.String()))
+	return err
 }
 
 func writeData(w stringWriter, data interface{}) error {
-	dataReplacer.WriteString(w, fmt.Sprint(data))
-	if strings.HasPrefix(data.(string), "data") {
-		w.writeString("\n\n")
+	if _, err := dataReplacer.WriteString(w, fmt.Sprint(data)); err != nil {
+		return err
 	}
-	return nil
+	_, err := w.writeString("\n\n")
+	return err
 }
 
 func (r CustomEvent) Render(w http.ResponseWriter) error {
