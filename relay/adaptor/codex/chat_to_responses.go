@@ -3,9 +3,11 @@ package codex
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -15,6 +17,7 @@ type chatToResponsesState struct {
 	Seq            int
 	ResponseID     string
 	CreatedAt      int64
+	TerminalEvent  responsesTerminalEvent
 	CurrentMsgID   string
 	CurrentFCID    string
 	InTextBlock    bool
@@ -54,6 +57,20 @@ type chatToResponsesState struct {
 	CodexCtx                   CodexToolContext
 	CodexCtxInitialized        bool
 	FallbackReasoningToMessage bool // 兜底：无 content 仅 reasoning 时，将 reasoning 文本复制为 message
+}
+
+type responsesTerminalEvent string
+
+const (
+	responsesTerminalCompleted responsesTerminalEvent = "response.completed"
+	responsesTerminalFailed    responsesTerminalEvent = "response.failed"
+)
+
+type responsesFailureState struct {
+	ResponseID    string
+	CreatedAt     int64
+	Error         *model.Error
+	TerminalEvent responsesTerminalEvent
 }
 
 // isCustomProxy 返回给定索引的工具调用是否为 Codex 自定义工具代理
@@ -348,6 +365,11 @@ func ConvertOpenAIChatToResponsesWithContext(originalRequestRawJSON, requestRawJ
 	}
 	rawJSON = bytes.TrimSpace(rawJSON[5:])
 
+	// 一旦已经产生终态事件，后续普通 chunk 和迟到终态都直接丢弃，避免破坏终态状态机。
+	if st.TerminalEvent != "" {
+		return []string{}
+	}
+
 	// 检查 [DONE] 标记
 	if string(rawJSON) == "[DONE]" {
 		// 生成完成事件
@@ -358,6 +380,10 @@ func ConvertOpenAIChatToResponsesWithContext(originalRequestRawJSON, requestRawJ
 	var out []string
 
 	nextSeq := func() int { st.Seq++; return st.Seq }
+
+	if errResp := parseChatStreamError(root); errResp != nil {
+		return st.generateFailedEvents(originalRequestRawJSON, errResp)
+	}
 
 	// 处理首次 chunk - 初始化并生成 response.created 和 response.in_progress
 	if st.FirstChunk {
@@ -388,6 +414,7 @@ func ConvertOpenAIChatToResponsesWithContext(originalRequestRawJSON, requestRawJ
 		st.FuncItemAdded = make(map[int]bool)
 		st.InputTokens = 0
 		st.OutputTokens = 0
+		st.TerminalEvent = ""
 		st.CachedTokens = 0
 		st.ReasoningTokens = 0
 		st.CacheCreationTokens = 0
@@ -603,6 +630,33 @@ func ConvertOpenAIChatToResponsesWithContext(originalRequestRawJSON, requestRawJ
 	}
 
 	return out
+}
+
+func parseChatStreamError(root gjson.Result) *model.Error {
+	errNode := root.Get("error")
+	if !errNode.Exists() || errNode.Type == gjson.Null {
+		return nil
+	}
+
+	errResp := &model.Error{}
+	if v := errNode.Get("message"); v.Exists() {
+		errResp.Message = v.String()
+	}
+	if v := errNode.Get("type"); v.Exists() {
+		errResp.Type = v.String()
+	}
+	if v := errNode.Get("param"); v.Exists() {
+		errResp.Param = v.String()
+	}
+	if v := errNode.Get("code"); v.Exists() {
+		errResp.Code = v.Value()
+	}
+
+	if errResp.Message == "" && errResp.Type == "" && errResp.Param == "" && errResp.Code == nil {
+		return nil
+	}
+
+	return errResp
 }
 
 // handleReasoningPart 发射 reasoning 块相关事件，并维护 ReasoningActive/ReasoningBuf 等状态
@@ -833,14 +887,7 @@ func (st *chatToResponsesState) closeFuncBlocks(nextSeq func() int) []string {
 	for idx := range st.FuncArgsBuf {
 		idxs = append(idxs, idx)
 	}
-	// 简单排序
-	for i := 0; i < len(idxs); i++ {
-		for j := i + 1; j < len(idxs); j++ {
-			if idxs[j] < idxs[i] {
-				idxs[i], idxs[j] = idxs[j], idxs[i]
-			}
-		}
-	}
+	sort.Ints(idxs)
 
 	for _, idx := range idxs {
 		args := "{}"
@@ -930,6 +977,10 @@ func (st *chatToResponsesState) closeFuncBlocks(nextSeq func() int) []string {
 
 // generateCompletedEvents 生成完成事件
 func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON []byte) []string {
+	if st.TerminalEvent != "" {
+		return nil
+	}
+
 	var out []string
 	nextSeq := func() int { st.Seq++; return st.Seq }
 
@@ -1108,13 +1159,7 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 		for idx := range st.FuncArgsBuf {
 			idxs = append(idxs, idx)
 		}
-		for i := 0; i < len(idxs); i++ {
-			for j := i + 1; j < len(idxs); j++ {
-				if idxs[j] < idxs[i] {
-					idxs[i], idxs[j] = idxs[j], idxs[i]
-				}
-			}
-		}
+		sort.Ints(idxs)
 		for _, idx := range idxs {
 			args := ""
 			if b := st.FuncArgsBuf[idx]; b != nil {
@@ -1246,6 +1291,64 @@ func (st *chatToResponsesState) generateCompletedEvents(originalRequestRawJSON [
 		completed, _ = sjson.Set(completed, "response.usage.cache_ttl", st.CacheTTL)
 	}
 
-	out = append(out, emitResponsesEvent("response.completed", completed))
+	st.TerminalEvent = responsesTerminalCompleted
+	out = append(out, emitResponsesEvent(string(responsesTerminalCompleted), completed))
+	return out
+}
+
+// generateFailedEvents 生成失败终态事件，并阻断后续成功终态发射。
+func (st *chatToResponsesState) generateFailedEvents(originalRequestRawJSON []byte, errResp *model.Error) []string {
+	if st.TerminalEvent != "" || errResp == nil {
+		return nil
+	}
+
+	var out []string
+	nextSeq := func() int { st.Seq++; return st.Seq }
+
+	// 关闭所有打开的 blocks（与 generateCompletedEvents 一致）
+	out = append(out, st.flushThinkTagBuf(nextSeq)...)
+	if st.PendingTextBuf.Len() > 0 && !st.shouldFallbackReasoning() {
+		out = append(out, st.flushPendingWhitespace(nextSeq)...)
+	}
+	if st.ReasoningActive {
+		out = append(out, st.closeReasoningBlock(nextSeq)...)
+	}
+	if st.InTextBlock {
+		out = append(out, st.closeTextBlock(nextSeq)...)
+	}
+	if st.InFuncBlock {
+		out = append(out, st.closeFuncBlocks(nextSeq)...)
+	}
+
+	if st.ResponseID == "" {
+		st.ResponseID = fmt.Sprintf("resp_%d", time.Now().UnixNano())
+	}
+	if st.CreatedAt == 0 {
+		st.CreatedAt = time.Now().Unix()
+	}
+
+	failure := responsesFailureState{
+		ResponseID:    st.ResponseID,
+		CreatedAt:     st.CreatedAt,
+		Error:         errResp,
+		TerminalEvent: responsesTerminalFailed,
+	}
+
+	failed := `{"type":"response.failed","sequence_number":0,"response":{"id":"","object":"response","created_at":0,"status":"failed","error":null,"output":[]}}`
+	failed, _ = sjson.Set(failed, "type", string(failure.TerminalEvent))
+	failed, _ = sjson.Set(failed, "sequence_number", nextSeq())
+	failed, _ = sjson.Set(failed, "response.id", failure.ResponseID)
+	failed, _ = sjson.Set(failed, "response.created_at", failure.CreatedAt)
+	failed, _ = sjson.Set(failed, "response.error", failure.Error)
+
+	if originalRequestRawJSON != nil {
+		req := gjson.ParseBytes(originalRequestRawJSON)
+		if v := req.Get("model"); v.Exists() {
+			failed, _ = sjson.Set(failed, "response.model", v.String())
+		}
+	}
+
+	st.TerminalEvent = failure.TerminalEvent
+	out = append(out, emitResponsesEvent(string(failure.TerminalEvent), failed))
 	return out
 }

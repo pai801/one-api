@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -50,7 +51,7 @@ func recordLogHelper(ctx context.Context, log *Log) {
 	log.RequestId = requestId
 	err := LOG_DB.Create(log).Error
 	if err != nil {
-		logger.Log.Errorf("failed to record log: "+err.Error())
+		logger.Log.Errorf("failed to record log: " + err.Error())
 		return
 	}
 	logger.Log.Infof("record log userId:%v, userName:%v, channelName:%v, modelName:%v, isStream:%v", log.UserId, log.Username, log.ChannelName, log.ModelName, log.IsStream)
@@ -219,7 +220,8 @@ func DeleteOldLog(targetTimestamp int64) (int64, error) {
 }
 
 func ClearOldLogBodies(targetTimestamp int64) (int64, error) {
-	result := LOG_DB.Model(&Log{}).Where("created_at < ?", targetTimestamp).Updates(map[string]interface{}{
+	startTime := targetTimestamp - int64(time.Hour.Seconds()*2)
+	result := LOG_DB.Model(&Log{}).Where("created_at < ? and created_at > ?", targetTimestamp, startTime).Updates(map[string]interface{}{
 		"request_body":   "",
 		"response_body":  "",
 		"request_header": "",

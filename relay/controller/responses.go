@@ -13,7 +13,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/songquanpeng/one-api/common"
-	"github.com/songquanpeng/one-api/relay/constant"
 	"github.com/songquanpeng/one-api/common/config"
 	"github.com/songquanpeng/one-api/common/ctxkey"
 	"github.com/songquanpeng/one-api/common/helper"
@@ -25,6 +24,7 @@ import (
 	"github.com/songquanpeng/one-api/relay/apitype"
 	"github.com/songquanpeng/one-api/relay/billing"
 	billingratio "github.com/songquanpeng/one-api/relay/billing/ratio"
+	"github.com/songquanpeng/one-api/relay/constant"
 	metaPkg "github.com/songquanpeng/one-api/relay/meta"
 	"github.com/songquanpeng/one-api/relay/model"
 	"github.com/songquanpeng/one-api/relay/relaymode"
@@ -256,23 +256,13 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 		common.SetEventStreamHeaders(c)
 		c.Writer.WriteHeader(http.StatusOK)
 		var converterState any
-		scanner := bufio.NewScanner(resp.Body)
-		scanner.Buffer(make([]byte, constant.ScannerBufferInitial), constant.ScannerBufferMax)
-
-		for scanner.Scan() {
-			line := scanner.Bytes()
-			if len(line) == 0 {
-				continue
-			}
-			events := codex.ConvertOpenAIChatToResponsesWithContext(requestBody, nil, line, &converterState, fallbackReasoning)
-			for _, event := range events {
-				_, _ = c.Writer.WriteString(event)
-			}
-			c.Writer.Flush()
+		streamResult, _ := forwardChatResponsesStream(c, resp.Body, requestBody, &converterState, fallbackReasoning)
+		if streamResult.FailureError != nil {
+			logger.Log.Errorf("[%s] %+v", "scan response failed", streamResult.FailureError)
 		}
-
-		if err := scanner.Err(); err != nil {
-			logger.Log.Errorf("[%s] %+v", "scan response failed", err)
+		if streamResult.FailedTerminal {
+			billing.ReturnPreConsumedQuota(ctx, preConsumedQuota, ctxMeta.TokenId)
+			logger.Log.Warnf("responses stream failed after SSE headers committed")
 		}
 
 		// 从流状态中提取 usage 和完整的响应体用于日志记录
@@ -288,7 +278,7 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 				}
 			}
 
-			if config.LogConsumeEnabled {
+			if config.LogConsumeEnabled && !streamResult.StreamErrored {
 				completedBody := codex.GetStreamCompletedBody(converterState, requestBody)
 				if completedBody != nil {
 					ctx = context.WithValue(ctx, CtxKeyResponseBody, string(completedBody))
@@ -359,6 +349,157 @@ func relayResponsesConverted(c *gin.Context, ctxMeta *metaPkg.Meta) *model.Error
 	go postConsumeQuotaForResponses(ctx, finalUsage, ctxMeta, ratio, preConsumedQuota, modelRatio, groupRatio, reqBody, respBody, reqHeader)
 
 	return nil
+}
+
+type chatResponsesStreamResult struct {
+	StreamErrored   bool
+	FailedTerminal  bool
+	SuccessTerminal bool
+	TerminalSeen    bool
+	FailureError    *model.Error
+}
+
+type convertedEventMeta struct {
+	EventName string
+	Failed    bool
+	Completed bool
+	StreamErr *model.Error
+}
+
+func parseConvertedEventMeta(converted string) convertedEventMeta {
+	meta := convertedEventMeta{}
+	lines := strings.Split(converted, "\n")
+	var payloadLines []string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "event: ") {
+			meta.EventName = strings.TrimSpace(strings.TrimPrefix(line, "event: "))
+			continue
+		}
+		if strings.HasPrefix(line, "data: ") {
+			payloadLines = append(payloadLines, strings.TrimPrefix(line, "data: "))
+		}
+	}
+	payload := strings.Join(payloadLines, "\n")
+	if meta.EventName == "response.completed" {
+		meta.Completed = true
+		return meta
+	}
+	if meta.EventName == "response.failed" {
+		meta.Failed = true
+		if payload != "" {
+			var evt struct {
+				Response *struct {
+					Error *model.Error `json:"error"`
+				} `json:"response"`
+			}
+			if err := json.Unmarshal([]byte(payload), &evt); err == nil && evt.Response != nil && evt.Response.Error != nil {
+				meta.StreamErr = evt.Response.Error
+			}
+		}
+		return meta
+	}
+	if meta.EventName == "error" {
+		meta.Failed = true
+		if payload != "" {
+			var evt model.ResponseStreamErrorEvent
+			if err := json.Unmarshal([]byte(payload), &evt); err == nil {
+				e := model.Error{Message: evt.Message, Type: "upstream_error", Code: evt.Code}
+				if e.Message == "" {
+					e.Message = "upstream stream error"
+				}
+				if e.Code == nil || e.Code == "" {
+					e.Code = "server_error"
+				}
+				meta.StreamErr = &e
+			}
+		}
+	}
+	return meta
+}
+
+func inspectConvertedResponsesEvents(c *gin.Context, convertedEvents []string) chatResponsesStreamResult {
+	result := chatResponsesStreamResult{}
+	for _, converted := range convertedEvents {
+		_, _ = c.Writer.WriteString(converted)
+		meta := parseConvertedEventMeta(converted)
+		if meta.Completed {
+			result.SuccessTerminal = true
+			result.TerminalSeen = true
+		}
+		if meta.Failed {
+			result.StreamErrored = true
+			result.FailedTerminal = true
+			result.TerminalSeen = true
+			if meta.StreamErr != nil {
+				result.FailureError = meta.StreamErr
+			}
+		}
+	}
+	return result
+}
+
+func forwardChatResponsesStream(c *gin.Context, body io.Reader, requestBody []byte, converterState *any, fallbackReasoning bool) (chatResponsesStreamResult, error) {
+	reader := bufio.NewReaderSize(body, constant.ScannerBufferInitial)
+	result := chatResponsesStreamResult{}
+	for {
+		event, err := codex.ReadSSEEvent(reader, constant.ScannerBufferMax*2)
+		if err != nil {
+			if err == io.EOF {
+				return result, nil
+			}
+			codex.RenderTerminalStreamReadErrorEvent(c, err)
+			c.Writer.Flush()
+			result.StreamErrored = true
+			result.FailedTerminal = true
+			if result.FailureError == nil {
+				result.FailureError = &model.Error{Message: err.Error(), Type: "stream_read_error", Code: "bad_response"}
+			}
+			return result, err
+		}
+		if event.Event == "" && event.Data == "" {
+			continue
+		}
+
+		rawLine := "data: " + event.Data
+		if event.Done {
+			rawLine = event.Data // [DONE] 不带 data: 前缀
+		}
+		convertedEvents := codex.ConvertOpenAIChatToResponsesWithContext(requestBody, nil, []byte(rawLine), converterState, fallbackReasoning)
+		eventResult := inspectConvertedResponsesEvents(c, convertedEvents)
+		if eventResult.SuccessTerminal {
+			result.SuccessTerminal = true
+		}
+		if eventResult.FailedTerminal {
+			result.StreamErrored = true
+			result.FailedTerminal = true
+			result.FailureError = eventResult.FailureError
+		}
+		c.Writer.Flush()
+		if result.FailedTerminal || result.SuccessTerminal {
+			// 消费剩余 body 以确保连接可复用
+			_, _ = io.Copy(io.Discard, body)
+			return result, nil
+		}
+	}
+}
+
+func formatSSEEvent(event codex.SSEEvent) string {
+	var b strings.Builder
+	if event.Event != "" {
+		b.WriteString("event: ")
+		b.WriteString(event.Event)
+		b.WriteByte('\n')
+	}
+	if event.Data != "" {
+		for i, line := range strings.Split(event.Data, "\n") {
+			if i > 0 {
+				b.WriteByte('\n')
+			}
+			b.WriteString("data: ")
+			b.WriteString(line)
+		}
+	}
+	return b.String()
 }
 
 func estimateResponsesPromptTokens(req map[string]interface{}) int {

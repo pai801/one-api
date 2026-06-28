@@ -33,7 +33,13 @@ func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *meta.Meta) error {
-	req.Header.Set("Content-Type", "application/json")
+	adaptor.SetupCommonRequestHeader(c, req, meta)
+	if req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if meta.IsStream {
+		req.Header.Set("Accept", "text/event-stream")
+	}
 	req.Header.Set("Authorization", "Bearer "+meta.APIKey)
 	return nil
 }
@@ -47,12 +53,17 @@ func (a *Adaptor) ConvertImageRequest(request *model.ImageRequest) (any, error) 
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Reader) (*http.Response, error) {
-	url, _ := a.GetRequestURL(meta)
-	req, err := http.NewRequest("POST", url, requestBody)
+	url, err := a.GetRequestURL(meta)
 	if err != nil {
 		return nil, err
 	}
-	a.SetupRequestHeader(c, req, meta)
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodPost, url, requestBody)
+	if err != nil {
+		return nil, err
+	}
+	if err := a.SetupRequestHeader(c, req, meta); err != nil {
+		return nil, err
+	}
 
 	client := client.HTTPClient
 	return client.Do(req)
