@@ -32,9 +32,40 @@ type Log struct {
 	IsStream          bool   `json:"is_stream" gorm:"default:false"`
 	SystemPromptReset bool   `json:"system_prompt_reset" gorm:"default:false"`
 	ChannelName       string `json:"channel_name" gorm:"default:''"`
-	RequestBody       string `json:"request_body" gorm:"type:text"`
-	ResponseBody      string `json:"response_body" gorm:"type:text"`
-	RequestHeader     string `json:"request_header" gorm:"type:text"`
+	RequestBody   string `json:"request_body" gorm:"type:text"`
+	ResponseBody  string `json:"response_body" gorm:"type:text"`
+	RequestHeader string `json:"request_header" gorm:"type:text"`
+}
+
+// LogListItem 用于日志列表查询，包含三个 bool 字段用于标识大字段是否有内容
+// 这个结构体不会参与数据库迁移，只用于查询结果的映射
+type LogListItem struct {
+	Id                int    `json:"id"`
+	UserId            int    `json:"user_id"`
+	CreatedAt         int64  `json:"created_at"`
+	Type              int    `json:"type"`
+	Content           string `json:"content"`
+	Username          string `json:"username"`
+	TokenName         string `json:"token_name"`
+	ModelName         string `json:"model_name"`
+	Quota             int    `json:"quota"`
+	PromptTokens      int    `json:"prompt_tokens"`
+	CompletionTokens  int    `json:"completion_tokens"`
+	CachedTokens      int    `json:"cached_tokens"`
+	ChannelId         int    `json:"channel"`
+	RequestId         string `json:"request_id"`
+	ElapsedTime       int64  `json:"elapsed_time"`
+	IsStream          bool   `json:"is_stream"`
+	SystemPromptReset bool   `json:"system_prompt_reset"`
+	ChannelName       string `json:"channel_name"`
+	HasRequestBody    bool   `json:"has_request_body"`
+	HasResponseBody   bool   `json:"has_response_body"`
+	HasRequestHeader  bool   `json:"has_request_header"`
+}
+
+// TableName 指定 LogListItem 查询时使用的表名
+func (LogListItem) TableName() string {
+	return "logs"
 }
 
 const (
@@ -127,9 +158,12 @@ func buildAllLogsQuery(logType int, startTimestamp int64, endTimestamp int64, mo
 	return tx
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int) (logs []*Log, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int) (logs []*LogListItem, err error) {
 	tx := buildAllLogsQuery(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel)
-	err = tx.Order("id desc").Limit(num).Offset(startIdx).Find(&logs).Error
+	err = tx.Select(
+		"id, user_id, created_at, type, content, username, token_name, model_name, quota, prompt_tokens, completion_tokens, cached_tokens, channel_id, request_id, elapsed_time, is_stream, system_prompt_reset, channel_name, " +
+			"request_body != '' as has_request_body, response_body != '' as has_response_body, request_header != '' as has_request_header",
+	).Order("id desc").Limit(num).Offset(startIdx).Find(&logs).Error
 	return logs, err
 }
 
@@ -161,9 +195,12 @@ func buildUserLogsQuery(userId int, logType int, startTimestamp int64, endTimest
 	return tx
 }
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int) (logs []*Log, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int) (logs []*LogListItem, err error) {
 	tx := buildUserLogsQuery(userId, logType, startTimestamp, endTimestamp, modelName, tokenName)
-	err = tx.Order("id desc").Limit(num).Offset(startIdx).Omit("id").Find(&logs).Error
+	err = tx.Select(
+		"user_id, created_at, type, content, username, token_name, model_name, quota, prompt_tokens, completion_tokens, cached_tokens, channel_id, request_id, elapsed_time, is_stream, system_prompt_reset, channel_name, " +
+			"request_body != '' as has_request_body, response_body != '' as has_response_body, request_header != '' as has_request_header",
+	).Order("id desc").Limit(num).Offset(startIdx).Find(&logs).Error
 	return logs, err
 }
 
@@ -173,14 +210,30 @@ func GetUserLogsCount(userId int, logType int, startTimestamp int64, endTimestam
 	return total, err
 }
 
-func SearchAllLogs(keyword string) (logs []*Log, err error) {
-	err = LOG_DB.Where("type = ? or content LIKE ?", keyword, keyword+"%").Order("id desc").Limit(config.MaxRecentItems).Find(&logs).Error
+func SearchAllLogs(keyword string) (logs []*LogListItem, err error) {
+	err = LOG_DB.Where("type = ? or content LIKE ?", keyword, keyword+"%").
+		Select(
+			"id, user_id, created_at, type, content, username, token_name, model_name, quota, prompt_tokens, completion_tokens, cached_tokens, channel_id, request_id, elapsed_time, is_stream, system_prompt_reset, channel_name, "+
+				"request_body != '' as has_request_body, response_body != '' as has_response_body, request_header != '' as has_request_header",
+		).
+		Order("id desc").Limit(config.MaxRecentItems).Find(&logs).Error
 	return logs, err
 }
 
-func SearchUserLogs(userId int, keyword string) (logs []*Log, err error) {
-	err = LOG_DB.Where("user_id = ? and type = ?", userId, keyword).Order("id desc").Limit(config.MaxRecentItems).Omit("id").Find(&logs).Error
+func SearchUserLogs(userId int, keyword string) (logs []*LogListItem, err error) {
+	err = LOG_DB.Where("user_id = ? and type = ?", userId, keyword).
+		Select(
+			"user_id, created_at, type, content, username, token_name, model_name, quota, prompt_tokens, completion_tokens, cached_tokens, channel_id, request_id, elapsed_time, is_stream, system_prompt_reset, channel_name, "+
+				"request_body != '' as has_request_body, response_body != '' as has_response_body, request_header != '' as has_request_header",
+		).
+		Order("id desc").Limit(config.MaxRecentItems).Find(&logs).Error
 	return logs, err
+}
+
+func GetLogById(id int) (*Log, error) {
+	var log Log
+	err := LOG_DB.Where("id = ?", id).First(&log).Error
+	return &log, err
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int) (quota int64) {

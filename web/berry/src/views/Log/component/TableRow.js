@@ -62,7 +62,7 @@ export default function LogTableRow({ item, userIsAdmin, onDetailClick }) {
           <TableCell>
             <Button
               onClick={() => onDetailClick(item)}
-              disabled={!item.request_body && !item.response_body && !item.request_header}
+              disabled={!item.has_request_body && !item.has_response_body && !item.has_request_header}
             >
               详情
             </Button>

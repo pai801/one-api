@@ -39,10 +39,25 @@ export default function Log() {
   const userIsAdmin = isAdmin();
   const [selectedLogItem, setSelectedLogItem] = useState(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
 
-  const handleDetailClick = (logItem) => {
-    setSelectedLogItem(logItem);
-    setDetailDialogOpen(true);
+  const handleDetailClick = async (logItem) => {
+    if (detailLoading) return;
+    setDetailLoading(true);
+    try {
+      const res = await API.get(`/api/log/${logItem.id}`);
+      const { success, message, data } = res.data;
+      if (success) {
+        setSelectedLogItem(data);
+        setDetailDialogOpen(true);
+      } else {
+        showError(message);
+      }
+    } catch (err) {
+      showError('获取日志详情失败');
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const handleDetailClose = () => {

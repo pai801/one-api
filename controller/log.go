@@ -105,6 +105,31 @@ func SearchUserLogs(c *gin.Context) {
 	return
 }
 
+func GetLogDetail(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	log, err := model.GetLogById(id)
+	if err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    log,
+	})
+	return
+}
+
 func GetLogsStat(c *gin.Context) {
 	logType, _ := strconv.Atoi(c.Query("type"))
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
